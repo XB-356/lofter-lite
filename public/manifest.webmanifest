@@ -1,0 +1,17 @@
+{
+  "name": "LOFTER Lite",
+  "short_name": "LOFTER Lite",
+  "description": "只留内容的 LOFTER 第三方客户端：首页推荐、标签、博主与图文详情，没有广告和周边。",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f4f4f6",
+  "theme_color": "#10b3aa",
+  "lang": "zh-CN",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

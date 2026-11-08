@@ -1,0 +1,10 @@
+node_modules/
+android/build/
+android/assets/www/
+android/tools/
+android/build/gen/
+*.apk
+*.jks
+*.keystore
+.DS_Store
+data/
