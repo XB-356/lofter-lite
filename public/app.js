@@ -1677,6 +1677,38 @@
   const followCache = { items: [], seen: new Set(), cursor: '0,0,0', loading: false, done: false };
   const tagCardCache = new Map();
   const TAG_CARD_TTL = 10 * 60 * 1000;
+  const TAG_CARD_KEY = 'lofterTagCards';
+
+  // 缩略图缓存落盘：下次打开 App 直接拿上次的图，不用等接口（用户反馈「要点进标签页才有图」）
+  function hydrateTagCards() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(TAG_CARD_KEY) || '{}');
+      const now = Date.now();
+      Object.keys(raw).forEach((tag) => {
+        const row = raw[tag];
+        if (!row || !Array.isArray(row.covers) || !row.covers.length) return;
+        tagCardCache.set(tag + '|' + (row.seenAt || 0), {
+          v: { covers: row.covers.slice(0, 3), updates: row.updates || 0, sampled: row.sampled || 0 },
+          exp: now + TAG_CARD_TTL,
+        });
+      });
+    } catch (e) {}
+  }
+  let tagCardSaveTimer = 0;
+  function persistTagCards() {
+    clearTimeout(tagCardSaveTimer);
+    tagCardSaveTimer = setTimeout(() => {
+      const out = {};
+      tagCardCache.forEach((hit, key) => {
+        if (!hit || !hit.v) return;
+        const tag = key.slice(0, key.lastIndexOf('|'));
+        const seenAt = Number(key.slice(key.lastIndexOf('|') + 1)) || 0;
+        out[tag] = { covers: (hit.v.covers || []).slice(0, 3), updates: hit.v.updates || 0, sampled: hit.v.sampled || 0, seenAt };
+      });
+      try { localStorage.setItem(TAG_CARD_KEY, JSON.stringify(out)); } catch (e) {}
+    }, 500);
+  }
+  hydrateTagCards();
 
   async function viewFollowing() {
     setTab('following');
@@ -1926,16 +1958,16 @@
     const hit = tagCardCache.get(key);
     if (hit && hit.exp > Date.now()) return hit.v;
     let posts = [];
-    try {
-      posts = (await api('/api/tag', { name: tag, offset: 0, sort: 'week' })).posts || [];
-    } catch (e) {}
-    if (posts.filter((p) => p.cover).length < 3) {
+    const pull = async (sort) => {
       try {
-        const more = (await api('/api/tag', { name: tag, offset: 0, sort: 'new' })).posts || [];
+        const more = (await api('/api/tag', { name: tag, offset: 0, sort })).posts || [];
         const seen = new Set(posts.map((p) => String(p.id)));
         for (const p of more) if (!seen.has(String(p.id))) posts.push(p);
       } catch (e) {}
-    }
+    };
+    await pull('week');
+    if (posts.filter((p) => p.cover).length < 3) await pull('new');
+    if (posts.filter((p) => p.cover).length < 3) await pull('hot');
     const allowed = posts.filter((p) => !isBlockedPost(p));
     const covers = [];
     for (const p of allowed) {
@@ -1945,6 +1977,7 @@
     const updates = allowed.filter((p) => (p.time || 0) > since).length;
     const v = { covers, updates, sampled: allowed.length };
     tagCardCache.set(key, { v, exp: Date.now() + TAG_CARD_TTL });
+    persistTagCards();
     return v;
   }
 
@@ -1961,14 +1994,21 @@
       return;
     }
 
+    const seenMapAll = store.settings.tagSeen || {};
     body.innerHTML = `<div class="tag-grid-head">共 ${tags.length} 个订阅标签</div>
-      <div class="tag-list">${tags.map((t) => `
+      <div class="tag-list">${tags.map((t) => {
+        const cached = tagCardCache.get(t + '|' + (seenMapAll[t] || 0));
+        const covers = cached && cached.exp > Date.now() ? cached.v.covers : [];
+        return `
         <a class="tag-row" data-tag="${esc(t)}" href="#/tag/${encodeURIComponent(t)}">
           <div class="tag-row-head"><b>#${esc(t)}</b><span class="tag-badge">…</span></div>
           <div class="tag-thumbs">
-            <span class="tag-thumb"></span><span class="tag-thumb"></span><span class="tag-thumb"></span>
+            ${[0, 1, 2].map((i) => covers[i]
+              ? `<span class="tag-thumb"><img src="${esc(thumb(covers[i], 240))}" alt="" loading="lazy" onerror="this.remove()"></span>`
+              : '<span class="tag-thumb loading"></span>').join('')}
           </div>
-        </a>`).join('')}</div>`;
+        </a>`;
+      }).join('')}</div>`;
 
     const rows = new Map([...body.querySelectorAll('.tag-row')].map((el) => [el.dataset.tag, el]));
     const seenMap = store.settings.tagSeen || {};
@@ -1984,7 +2024,13 @@
         if (!el) continue;
         const thumbs = el.querySelectorAll('.tag-thumb');
         meta.covers.forEach((c, i) => {
-          if (thumbs[i]) thumbs[i].innerHTML = `<img src="${esc(thumb(c, 240))}" alt="" loading="lazy" onerror="this.remove()">`;
+          if (thumbs[i]) {
+            thumbs[i].classList.remove('loading');
+            thumbs[i].innerHTML = `<img src="${esc(thumb(c, 240))}" alt="" loading="lazy" onerror="this.remove()">`;
+          }
+        });
+        thumbs.forEach((th) => {
+          if (!th.querySelector('img')) th.classList.remove('loading');
         });
         const badge = el.querySelector('.tag-badge');
         if (meta.updates > 0) {
@@ -1996,7 +2042,7 @@
         }
       }
     }
-    await Promise.all([worker(), worker(), worker()]);
+    await Promise.all([worker(), worker(), worker(), worker()]);
   }
 
   // ================= 页面：搜索 =================

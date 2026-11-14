@@ -1172,6 +1172,17 @@ body.immersive #app { padding-bottom: 0; }
   overflow: hidden;
 }
 .tag-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tag-thumb.loading { position: relative; overflow: hidden; }
+.tag-thumb.loading::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(100deg, transparent 20%, rgba(255,255,255,0.35) 50%, transparent 80%);
+  animation: tagShimmer 1.2s ease-in-out infinite;
+}
+@keyframes tagShimmer {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
 
 .big-thumb-strip {
   display: flex;
