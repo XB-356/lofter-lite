@@ -26,9 +26,50 @@ android/         Android 壳工程与构建脚本
 
 ## 本地运行网页版
 
+零依赖：不需要 `npm install`，Node.js ≥ 20 即可。
+
 ```bash
 node server.js
 # http://127.0.0.1:8787
+```
+
+## 开发与调试
+
+```bash
+npm run dev            # 真实上游 + 改文件自动重启
+npm run dev:mock       # 本地假数据，完全离线，随便点不心疼
+npm run dev:lan        # 监听 0.0.0.0，手机连同一 WiFi 直接打开
+npm run dev:open       # mock 模式 + 自动打开浏览器
+
+npm test               # 单元 + 端到端冒烟（离线、随机端口，不碰真实接口）
+npm run test:live      # 真实上游联调（联网后手动跑；上游改协议时这里最先红）
+npm run check          # 语法 / JSON / 相对引用自检（没有构建步骤，防手滑）
+npm run cache:clear    # 清 data/cache 与 data/cache-mock
+npm run verify         # check + test，提交前跑这个
+```
+
+### 调试开关
+
+| 变量 | 作用 |
+| --- | --- |
+| `PORT` / `HOST` | 端口（默认 8787）/ 监听地址（默认 127.0.0.1，`0.0.0.0` = 局域网可访问） |
+| `LOFTER_LITE_MOCK=1` | 同 `--mock`：改用 `dev/mock.js` 的本地假数据 |
+| `MOCK_FAIL=1` | 所有接口返回 502，用来看错误态 |
+| `MOCK_EMPTY=1` | 所有列表返回空，用来看空状态 |
+| `MOCK_DELAY=800` | 每个接口人为延迟 800ms，用来看加载态 |
+| `LOFTER_LITE_CACHE_DIR` | 覆盖缓存目录（测试用临时目录） |
+
+mock 模式的图片是 `server.js` 现场生成的 SVG 占位图（`/mock/img/600x800?seed=x`），所以完全离线也能看到完整 masonry 排版。假数据里**故意**混入了空条目、AI 标签、付费内容、脏 HTML（`<script>` / `onclick` / `javascript:`），用来验证过滤与清洗逻辑。
+
+### 开发目录
+
+```
+dev/mock.js           本地假数据层（导出与 lib/lofter.js 完全一致）
+dev/mock-data.js      假数据生成器（产出上游原始结构，仍走真实归一化代码路径）
+scripts/dev.mjs       开发启动器（--mock / --lan / --port / --open / --no-watch）
+scripts/check.mjs     零依赖自检
+scripts/cache-clear.mjs
+test/                 node:test 测试（server / lofter / cache / live）
 ```
 
 ## 构建 APK

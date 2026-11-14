@@ -1,14 +1,24 @@
 {
   "name": "lofter-lite",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "只留内容的 LOFTER 第三方客户端",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "dev": "node scripts/dev.mjs",
+    "dev:mock": "node scripts/dev.mjs --mock",
+    "dev:lan": "node scripts/dev.mjs --lan",
+    "dev:mock:lan": "node scripts/dev.mjs --mock --lan",
+    "dev:open": "node scripts/dev.mjs --mock --open",
+    "test": "node --test test/cache.test.js test/lofter.test.js test/server.test.js",
+    "test:live": "node --test test/live.test.js",
+    "check": "node scripts/check.mjs",
+    "cache:clear": "node scripts/cache-clear.mjs",
+    "verify": "npm run check && npm test"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "license": "MIT"
 }

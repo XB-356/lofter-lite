@@ -5,17 +5,27 @@
  */
 const http = require('http');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const zlib = require('zlib');
 
 const Cache = require('./lib/cache');
 const { categories, defaultTags } = require('./lib/catalog');
-const { tagPosts, postDetail, blogHome, tagInfo, comments, UpstreamError } = require('./lib/lofter');
+
+// LOFTER_LITE_MOCK=1 → 用 dev/mock.js 的本地假数据，完全不碰外网（UI 联调 / 测试用）
+const MOCK = process.env.LOFTER_LITE_MOCK === '1';
+const dataSource = MOCK ? require('./dev/mock') : require('./lib/lofter');
+const { tagPosts, postDetail, blogHome, tagInfo, comments, UpstreamError } = dataSource;
 
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || '127.0.0.1';
 const PUB = path.join(__dirname, 'public');
-const cache = new Cache(path.join(__dirname, 'data', 'cache'));
+// mock / 真实数据用各自的缓存目录，避免反过来互相污染（mock 的假帖子被当成真实缓存）
+const cache = new Cache(
+  process.env.LOFTER_LITE_CACHE_DIR
+    ? path.resolve(process.env.LOFTER_LITE_CACHE_DIR)
+    : path.join(__dirname, 'data', MOCK ? 'cache-mock' : 'cache')
+);
 
 const TTL = {
   tag: 3 * 60 * 1000,
@@ -236,6 +246,35 @@ function handleSearch(q, res) {
   json(res, 200, { q: raw, tags: matched.slice(0, 12) });
 }
 
+// ---------------- mock 占位图 ----------------
+/** mock 模式下的图片占位符：/mock/img/600x800?seed=xxx → 现场生成 SVG，离线也有图可看 */
+function serveMockImage(res, u) {
+  const m = /^\/mock\/img\/(\d{1,4})x(\d{1,4})\/?$/.exec(u.pathname);
+  if (!m) return send(res, 404, 'Not Found', { 'Content-Type': 'text/plain; charset=utf-8' });
+  const w = Math.min(2000, Math.max(16, Number(m[1])));
+  const h = Math.min(2000, Math.max(16, Number(m[2])));
+  const seed = u.searchParams.get('seed') || '';
+  let hue = 0;
+  for (let i = 0; i < seed.length; i++) hue = (hue * 31 + seed.charCodeAt(i)) % 360;
+  const c1 = `hsl(${hue} 46% 64%)`;
+  const c2 = `hsl(${(hue + 40) % 360} 42% 40%)`;
+  const fontSize = Math.max(12, Math.round(Math.min(w, h) * 0.12));
+  const svg = [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`,
+    `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">`,
+    `<stop offset="0" stop-color="${c1}"/><stop offset="1" stop-color="${c2}"/>`,
+    `</linearGradient></defs>`,
+    `<rect width="100%" height="100%" fill="url(#g)"/>`,
+    `<text x="${w / 2}" y="${h / 2 + fontSize / 3}" fill="rgba(255,255,255,.85)"`,
+    ` font-family="system-ui,-apple-system,sans-serif" font-size="${fontSize}" text-anchor="middle">`,
+    `${w}×${h}</text></svg>`,
+  ].join('');
+  send(res, 200, svg, {
+    'Content-Type': 'image/svg+xml; charset=utf-8',
+    'Cache-Control': 'public, max-age=3600',
+  });
+}
+
 // ---------------- 静态文件 ----------------
 const sendFile = (res, filePath, req) => {
   fs.stat(filePath, (err, st) => {
@@ -322,11 +361,44 @@ const server = http.createServer(async (req, res) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     return send(res, 405, 'Method Not Allowed');
   }
+  if (MOCK && pathname.startsWith('/mock/img/')) {
+    return serveMockImage(res, u);
+  }
   return serveStatic(req, res, pathname);
 });
 
+function lanUrls(port) {
+  const out = [];
+  for (const list of Object.values(os.networkInterfaces())) {
+    for (const ni of list || []) {
+      if (ni.family === 'IPv4' && !ni.internal) out.push(`http://${ni.address}:${port}`);
+    }
+  }
+  return out;
+}
+
+server.on('error', (err) => {
+  if (err && err.code === 'EADDRINUSE') {
+    console.error(`端口 ${PORT} 已被占用。换一个端口：PORT=8790 npm run dev`);
+    console.error('（npm test 用随机端口，不受影响）');
+    process.exit(1);
+  }
+  throw err;
+});
+
 server.listen(PORT, HOST, () => {
-  console.log(`LOFTER Lite 已启动: http://${HOST}:${PORT}`);
+  const addr = server.address();
+  const actualPort = addr && typeof addr === 'object' ? addr.port : PORT;
+  const loopback = HOST === '0.0.0.0' || HOST === '::' || HOST === '';
+  const shownHost = loopback ? '127.0.0.1' : HOST;
+  console.log(`LOFTER Lite 已启动: http://${shownHost}:${actualPort}${PORT === 0 ? '  (随机端口)' : ''}`);
+  if (MOCK) {
+    console.log('[mock] 使用 dev/mock.js 的本地假数据，不会访问 LOFTER；MOCK_FAIL=1 / MOCK_EMPTY=1 / MOCK_DELAY=800 可切错误态、空态、慢速');
+  }
+  if (loopback) {
+    const lan = lanUrls(actualPort);
+    if (lan.length) console.log(`[lan] 同一局域网可用：${lan.join('  ')}`);
+  }
   console.log(`（手机浏览器打开这个地址，或添加到主屏幕）`);
 });
 

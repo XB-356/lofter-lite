@@ -8,3 +8,4 @@ android/build/gen/
 *.keystore
 .DS_Store
 data/
+dev-shots/
