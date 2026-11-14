@@ -1478,6 +1478,7 @@
     followCache.cursor = '0,0,0';
     followCache.loading = false;
     followCache.done = false;
+    followCache.pages = 0;
   }
 
   async function ensureRecPool() {
@@ -1538,47 +1539,45 @@
       return added;
     }
 
-    async function loadRest() {
-      while (!followCache.done && token === navId) {
-        let data;
-        try {
-          data = await api('/api/follow', { cursor: followCache.cursor });
-        } catch (e) {
-          if (token === navId) $('#loadmore').textContent = '部分博主加载失败，已显示 ' + followCache.items.length + ' 条';
-          return;
-        }
-        if (token !== navId) return;
-        appendPosts(data.posts);
+    async function fetchPage() {
+      if (followCache.loading || followCache.done) return 0;
+      followCache.loading = true;
+      try {
+        const params = followCache.pages ? { cursor: followCache.cursor } : { offset: 0 };
+        const data = await api('/api/follow', params);
+        if (token !== navId) return 0;
+        const added = appendPosts(data.posts);
         followCache.cursor = data.cursor || followCache.cursor;
         followCache.done = !!data.done;
-        if (!followCache.done && $('#loadmore')) {
-          $('#loadmore').textContent = '已显示 ' + followCache.items.length + ' 条，正在汇总其余博主…';
-        }
-      }
-      if (token === navId) {
-        paint();
-        if ($('#loadmore')) $('#loadmore').textContent = '';
+        followCache.total = data.total || followCache.total || 0;
+        followCache.pages = (followCache.pages || 0) + 1;
+        return added;
+      } finally {
+        followCache.loading = false;
       }
     }
 
-    async function load(first) {
-      if (followCache.loading) return;
-      followCache.loading = true;
+    function paintCount() {
+      const el = $('#loadmore');
+      if (!el) return;
+      if (followCache.done) { el.textContent = followCache.items.length ? '' : ''; return; }
+      el.textContent = '已显示 ' + followCache.items.length + ' 条 · 继续下拉加载更多';
+    }
+
+    // 首屏只抓 3 页（约 45 条），剩下的滚到底再按需加载，避免一次几百条把页面撑爆
+    const FIRST_PAGES = 3;
+
+    async function loadInitial() {
       try {
-        const data = await api('/api/follow', { offset: 0 });
+        for (let i = 0; i < FIRST_PAGES && !followCache.done; i++) {
+          const added = await fetchPage();
+          if (token !== navId) return;
+          if (!added && followCache.done) break;
+        }
         if (token !== navId) return;
-        appendPosts(data.posts);
-        followCache.cursor = data.cursor || followCache.cursor;
-        followCache.done = !!data.done;
-        followCache.total = data.total || 0;
         $('#feed-list').querySelectorAll('.skeleton').forEach((n) => n.remove());
         paint();
-        if (followCache.done) {
-          $('#loadmore').textContent = '';
-        } else {
-          $('#loadmore').textContent = '先显示 ' + followCache.items.length + ' 条，正在汇总其余博主…';
-          loadRest();
-        }
+        paintCount();
       } catch (err) {
         if (token !== navId) return;
         if (!followCache.items.length) {
@@ -1586,15 +1585,35 @@
           $('#follow-body .retry')?.addEventListener('click', () => { resetFollowCache(); render(); });
         } else {
           $('#loadmore').innerHTML = `<button id="retry-more" class="retry-inline">加载失败：${esc(err.message || '网络异常')}，点此重试</button>`;
-          $('#retry-more')?.addEventListener('click', () => load(false));
+          $('#retry-more')?.addEventListener('click', () => loadInitial());
         }
-      } finally {
-        followCache.loading = false;
       }
     }
 
-    if (!followCache.items.length) load(true);
-    else if (!followCache.done) loadRest();
+    async function loadMore() {
+      if (followCache.loading || followCache.done) return;
+      try {
+        const added = await fetchPage();
+        if (token !== navId) return;
+        if (added) paint();
+        paintCount();
+      } catch (err) {
+        if (token !== navId) return;
+        $('#loadmore').innerHTML = `<button id="retry-more" class="retry-inline">加载失败：${esc(err.message || '网络异常')}，点此重试</button>`;
+        $('#retry-more')?.addEventListener('click', () => loadMore());
+      }
+    }
+
+    if (!followCache.items.length) {
+      loadInitial();
+    } else {
+      if (followCache.done) paintCount(); else paintCount();
+    }
+
+    const io = new IntersectionObserver((en) => {
+      if (en.some((x) => x.isIntersecting)) loadMore();
+    }, { rootMargin: '800px 0px' });
+    io.observe($('#sentinel'));
 
     const kill = () => { if (token !== navId) io.disconnect(); else setTimeout(kill, 300); };
     setTimeout(kill, 300);
