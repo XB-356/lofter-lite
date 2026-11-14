@@ -481,7 +481,41 @@
     else nav('#/');
   }
 
-  function saveScroll() { scrollPos.set(currentRoute, window.scrollY); }
+  // 恢复滚动位置时写回 scrollPos 会把目标值覆盖成 0，所以恢复期间不记
+  let restoringScroll = false;
+  function saveScroll() {
+    if (restoringScroll) return;
+    scrollPos.set(currentRoute, window.scrollY);
+  }
+
+  // 从详情/列表返回时把原来的滑动位置还回去。页面内容是异步加载的，
+  // 高度会一直变，所以按 100ms 重试，直到滚到目标位置或高度够了；
+  // 用户一动手就把滚动权交还，别跟手指抢。
+  function restoreScroll(id, y) {
+    if (id !== navId) return;
+    const target = y || 0;
+    if (!target) { window.scrollTo(0, 0); return; }
+    restoringScroll = true;
+    let tries = 0;
+    let timer = 0;
+    const stop = () => {
+      restoringScroll = false;
+      clearTimeout(timer);
+      window.removeEventListener('touchstart', stop, true);
+      window.removeEventListener('wheel', stop, true);
+    };
+    window.addEventListener('touchstart', stop, true);
+    window.addEventListener('wheel', stop, true);
+    const tick = () => {
+      if (id !== navId || !restoringScroll) return stop();
+      const max = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+      window.scrollTo(0, Math.min(target, max));
+      tries += 1;
+      if (max >= target - 4 || tries >= 20) return stop();
+      timer = setTimeout(tick, 100);
+    };
+    tick();
+  }
 
   window.addEventListener('hashchange', () => {
     saveScroll();
@@ -490,6 +524,7 @@
 
   let scrollTick = 0;
   window.addEventListener('scroll', () => {
+    saveScroll();
     if (scrollTick) return;
     scrollTick = requestAnimationFrame(() => {
       scrollTick = 0;
@@ -713,9 +748,6 @@
 
     if (cache.posts.length) {
       paint();
-      const y = scrollPos.get(currentRoute) || 0;
-      requestAnimationFrame(() => window.scrollTo(0, y));
-      setTimeout(() => { if (Math.abs(window.scrollY - y) > 4) window.scrollTo(0, y); }, 80);
     } else {
       appendSkeletons(m, 6);
     }
@@ -1461,7 +1493,7 @@
       openLightbox(imgs, Number(img.dataset.idx) || 0);
     });
 
-    window.scrollTo(0, 0);
+    // 详情页的滚动位置也由全局 restoreScroll 处理（从评论返回时能回到原处）
     let liked = !!post.liked, following = false;
     if (post.author && mutedBlogList().some((x) => x.name === post.author.name)) {
       $('#act-mute')?.classList.add('on');
@@ -2771,6 +2803,7 @@
     const { path, parts, q } = parseHash();
     currentRoute = path + (q.toString() ? '?' + q : '');
     document.body.classList.remove('immersive');
+    const routeY = scrollPos.get(currentRoute) || 0;
 
     try {
       if (path === '/' || path === '') return await viewHome({});
@@ -2800,6 +2833,9 @@
     } catch (err) {
       console.error(err);
       if (id === navId) viewEl.innerHTML = emptyEl(err.message || '出错了', true);
+    } finally {
+      // 视图函数返回时内容可能还在陆续进，restoreScroll 会继续追几轮
+      restoreScroll(id, routeY);
     }
   }
 
