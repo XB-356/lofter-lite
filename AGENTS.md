@@ -99,4 +99,7 @@ test/                node:test：server(HTTP) / lofter(归一化) / cache / live
 - **LOFTER 不提供「标签下共有多少作品」**：`oldapi/tagPosts.api` 的 `response` 只有 `{type, updateTime, items, topPostIds, offset}`，话题页 `__initialize_data__.tagInfo` 只有 `{tagName, joinedNum, tagViewCount, lastUpdateTime, imageUrl}`。所以标签卡副标题不要显示 `N 件作品`（那是拿第一页条数冒充的）；现在是「置顶作品标题/摘要」，纯文字标签显示 `N 人关注 · M 次浏览`，两样都没有就把这一行收起（`.tag-big-sub:empty`）。
 - 推荐流里的视频帖：列表接口不带时长、`firstImageWH` 也可能缺，`cardEl` 对 `type 3/4` 默认按 16:9 摆（别再退回 0.78 的竖条），`fillVideoDurations()` 会对缺时长的视频卡补一次 `/api/post` 拿 `embed.duration`，按帖子 id 缓存在内存里，瀑布流重排后重贴角标。`normDetail` 里 `dur` 有 `video.duration` 兜底。
 - 帖子详情的「屏蔽」按钮 = 打开「不想看这条？」面板（作者 + 当前作品的标签都能选），不要在详情页直接 `muteBlog`；在详情页里屏蔽成功后要 `closeSheet(); back();`（这条内容已经不该看了）。
+- 详情页的「分享」在 APK 里走**系统分享面板**（`api('/api/share')` → `Bridge.share(title, url)` 用 `Intent.ACTION_SEND`），不要再 `openExternal` 把人丢进浏览器；WebView 里没有 `navigator.share`，网页版兜底是复制链接 + toast。
+- 「查看全部 N 条回复」要先按 id 去重：`commentEl` 已经把 `c.l2` 的前两条渲染进 `.cmt-replies` 了，再整份 append 接口结果就会重复。做法是收集 `list.querySelectorAll('.cmt')` 的 id，只插没出现过的。
+- 返回上一页要回到原来的滑动位置：路由层统一处理（`saveScroll()` 滚动时记录 `currentRoute` → `scrollPos`，`render()` 的 `finally` 调 `restoreScroll(id, y)`），因为内容是异步加载的，`restoreScroll` 每 100ms 追一轮直到高度够、最多 20 轮；恢复期间 `restoringScroll` 为 true，`saveScroll()` 直接返回（否则会把目标值覆盖成 0）；用户 `touchstart`/`wheel` 一动手就停止恢复。不要在视图函数里各写一套 `window.scrollTo`，也别往 `viewHome` 里加恢复逻辑。
 - 请求日志会打印所有非 `/api/` 路径；接口出错打印 `[api]` 行带状态码和耗时，排障先看它。
