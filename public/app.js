@@ -1409,13 +1409,18 @@
     });
 
     window.scrollTo(0, 0);
-    let liked = false, following = false;
+    let liked = !!post.liked, following = false;
     if (post.author && mutedBlogList().some((x) => x.name === post.author.name)) {
       $('#act-mute')?.classList.add('on');
       const s = $('#act-mute')?.querySelector('span');
       if (s) s.textContent = '已屏蔽';
     }
     const likeBtn = $('#act-like');
+    if (liked && likeBtn) {
+      likeBtn.classList.add('on');
+      const s = likeBtn.querySelector('span');
+      if (s) s.textContent = '已喜欢';
+    }
     likeBtn?.addEventListener('click', async () => {
       try {
         await api('/api/like', { blogId: post.author.id, postId: post.id, like: liked ? '0' : '1' });

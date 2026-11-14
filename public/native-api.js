@@ -225,6 +225,8 @@
       tags, ai: tags.some(isAiTag), content, caption, photos, video,
       wordCount: post.wordCount || post.totalWordCount || 0,
       ipLocation: post.ipLocation || '',
+      // 详情响应里带 user 状态：liked / shared / subscribed（用来把「喜欢」按钮点亮）
+      liked: !!(entry.liked || post.liked),
     });
   }
 
@@ -920,17 +922,29 @@
     return out;
   }
 
+  // 点赞：必须 POST 表单，参数是 liketype=like|unlike + postid + blogid + scene
+  // （GET + like=1 的老写法上游只回 4101，2026-11 真机确认）
   async function likePost(blogId, postId, like) {
     if (!(await probeLogin())) throw new Error('请先登录 LOFTER');
-    const url = 'https://api.lofter.com/v1.1/like.api?product=' + PRODUCT
-      + '&postId=' + encodeURIComponent(postId)
-      + '&blogId=' + encodeURIComponent(blogId)
-      + '&like=' + (like ? '1' : '0');
-    const text = await req(url, { headers: { 'User-Agent': APP_UA, Accept: 'application/json' } });
+    const url = 'https://api.lofter.com/v1.1/like.api?product=' + PRODUCT;
+    const form = {
+      liketype: like ? 'like' : 'unlike',
+      postid: String(postId),
+      blogid: String(blogId),
+      scene: 'note',
+    };
+    const text = await req(url, {
+      method: 'POST',
+      body: new URLSearchParams(form).toString(),
+      headers: { 'User-Agent': APP_UA, Accept: '*/*' },
+    });
     let j;
     try { j = JSON.parse(text); } catch (e) { throw new Error('点赞返回异常'); }
-    const ok = !!(j && ((j.meta && j.meta.status === 200) || j.code === 0));
-    if (!ok) throw new Error((j && j.meta && j.meta.msg) || (j && j.msg) || '点赞失败');
+    const meta = (j && j.meta) || {};
+    const ok = !!(j && (meta.status === 200 || j.code === 0));
+    // 已经喜欢过的作品再点 like，上游回 4102「参数异常」；当成已喜欢处理，别弹错误
+    if (!ok && like && meta.status === 4102) return { ok: true, already: true };
+    if (!ok) throw new Error(meta.msg || (j && j.msg) || '点赞失败');
     return { ok };
   }
 
