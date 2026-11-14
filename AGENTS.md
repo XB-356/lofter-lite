@@ -77,6 +77,14 @@ test/                node:test：server(HTTP) / lofter(归一化) / cache / live
 - APK 判登录态看 cookie：登录后实际的 cookie 名是 **`LOFTER_SESS`**（不是 `LOFTER_SESSION`），并且 `api.lofter.com` 和 `www.lofter.com` 两个域都写了登录 cookie。`Bridge.isLoggedIn()` 必须两个域、多个候选名都查，否则会出现「cookie 有会话、/api/me 能取到用户，但界面显示未登录」。
 - 视频帖的 `embed` 是 JSON 字符串，里面才有 mp4 地址。
 - **关注流时间线 `getTrackItemListWithShare.json` 的 `items[].type` 有语义**：`1` = 关注的人自己发的，`2` = 关注的人**推荐**的（`shareInfo.blogInfo` 是推荐人，`item.followed=false`）。「包含关注人的推荐」开关就是过滤 `type 2`；`native-api.js` 里映射成 `post.rec` / `post.recBy`。同一响应里的 `timelineBlogList` 各分组 `posts` 实测是空数组，别指望它给内容。
+- **关注流不要一次翻到底**：LOFTER 的 `hasNext` 会持续为 true，旧实现进页面就翻到 526 条、页面高 21 万 px、十几秒才出内容。现在 `renderFollowFeed` 首屏只抓 `FIRST_PAGES = 3` 页，底部 `#sentinel` + IntersectionObserver 按需加载；`followCache.pages` 记录已抓页数，第一页用 `offset=0`、后续用 `cursor`。
+- **账号的关注/粉丝/收藏三份数字只在 usercounts 里**，别用 `deepFind` 猜键：`response.userStatistic.followingCount`（关注 155）、`response.counts[0].followerCount`（粉丝 97）、`response.userStatistic.favoritePostCount`（收藏 2701）。`response.counts` 是**数组**（每个博客一份），不是对象。
+- 账号级列表接口（都要登录 cookie）：
+  - 关注：`GET https://api.lofter.com/v1.1/userfollowing.api?product=…&blogdomain=<自己的域名>&offset=&limit=20`
+  - 粉丝：`GET https://api.lofter.com/v1.1/blogfollower.api?…` → 元素里 `following` 表示「对方是否关注我」
+  - 账号收藏（喜欢）：`GET https://api.lofter.com/v1.1/batchdata.api?product=…&supportposttypes=1,2,3,4,5,6&postdigestnew=1&returnData=1&method=favorites&blogdomain=…&offset=&limit=20` → `response.count` + `response.items[].post`
+  - `blogdomain` 必须是自己的真实域名（如 `xb-356.lofter.com`），用 `myDomain()` 取；猜错就返回空。
+- 对应的路由是 `/api/relation?type=following|fans&offset=` 与 `/api/favorites?offset=`，页面是 `#/relation?type=…`、`#/favorites`；Web 版没有这些接口，进入时按 `NATIVE` 拦一下并提示用 APK。
 - 帖子 `postView.type`：`1` 文字、`2` 图片、`4` 视频。**视频帖没有 `image` / `firstImageUrl`**，封面只在 `videoPostView.videoInfo.video_img_url`（或 `video_first_img`），时长在 `videoInfo.duration`（秒），宽高是字符串 `img_width` / `img_height`。
 - 瀑布流卡片现在整张可点（`cardEl` 绑了 click → `#/post/...`），长按 520ms 弹「不想看这条？」。改这两处注意：长按命中后要置 `suppressTapUntil`，否则松手会立刻跳详情；`card-save` 是 button、封面是 a，都要在处理器里排除。
 - 图片链接要经过前端 `thumb()` 追加 `imageView&thumbnail=` 参数；mock 占位图忽略这些参数。
