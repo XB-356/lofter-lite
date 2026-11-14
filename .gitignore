@@ -9,3 +9,5 @@ android/build/gen/
 .DS_Store
 data/
 dev-shots/
+desktop/*.exe
+desktop/obj/

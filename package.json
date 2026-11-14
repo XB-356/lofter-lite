@@ -15,6 +15,9 @@
     "test:live": "node --test test/live.test.js",
     "check": "node scripts/check.mjs",
     "cache:clear": "node scripts/cache-clear.mjs",
+    "desktop": "node scripts/desktop.mjs",
+    "desktop:build": "powershell -NoProfile -ExecutionPolicy Bypass -File desktop/build.ps1",
+    "desktop:test": "node scripts/desktop.mjs --self-test",
     "verify": "npm run check && npm test"
   },
   "engines": {

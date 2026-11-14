@@ -48,6 +48,19 @@ npm run cache:clear    # 清 data/cache 与 data/cache-mock
 npm run verify         # check + test，提交前跑这个
 ```
 
+### 桌面启动器（Windows）
+
+不想敲命令的话，双击仓库根目录的 **`启动测试端.cmd`**（或 `npm run desktop`）打开一个窗口，勾选「Mock 假数据 / 真实上游」「局域网可访问」「改文件自动重启」，填端口，点「启动」，再点「打开浏览器」即可。日志实时打印在窗口下半部分，启动状态显示在上方，设置会记住下次打开时的选择。
+
+```bash
+npm run desktop         # 打开窗口（exe 不存在会先用系统自带 csc.exe 编译）
+npm run desktop:build   # 只编译：desktop/LOFTER-Lite-Launcher.exe
+npm run desktop:test    # 无界面自检：随机端口起 mock 服务，ping 通打印 SELF-TEST OK
+npm run desktop -- --headless --mock --port 8899   # 无界面常驻，等价 npm run dev:mock
+```
+
+零依赖：用 Windows 自带的 `.NET Framework 4.x` 编译器（`csc.exe`）编译 WinForms 程序，不需要装 .NET SDK / Visual Studio。exe 不进仓库（`.gitignore` 里已排除），换机器/改完源码首次运行会自动重编译。
+
 ### 调试开关
 
 | 变量 | 作用 |
@@ -69,6 +82,9 @@ dev/mock-data.js      假数据生成器（产出上游原始结构，仍走真�
 scripts/dev.mjs       开发启动器（--mock / --lan / --port / --open / --no-watch）
 scripts/check.mjs     零依赖自检
 scripts/cache-clear.mjs
+scripts/desktop.mjs   桌面启动器入口（必要时先编译 exe，再打开窗口）
+desktop/src/Launcher.cs  WinForms 启动器源码（C# 5，零依赖）
+desktop/build.ps1     用系统 csc.exe 编译 exe
 test/                 node:test 测试（server / lofter / cache / live）
 ```
 
