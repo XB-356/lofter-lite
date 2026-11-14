@@ -95,5 +95,8 @@ test/                node:test：server(HTTP) / lofter(归一化) / cache / live
 - JDK 的 `javapath` 只有 java/javac，没有 `keytool`：`android/build.ps1` 会自己找 JDK 主目录（JAVA_HOME 或 `C:\Program Files\Java\jdk-*`）。
 - 真机装包报 `INSTALL_FAILED_USER_RESTRICTED` 是 vivo 的「USB 调试（安全设置）」没开（要登录 vivo 帐号）；绕开办法是 `adb push` 到 `/sdcard/Download/` 后手机上手动安装。
 - **点赞接口是 POST 表单，不是 GET**：`POST https://api.lofter.com/v1.1/like.api?product=…`，body 是 `liketype=like|unlike&postid=…&blogid=…&scene=note`。老写法（GET + `like=1`）上游现在只回 `meta.status=4101 发生错误，请重新尝试`；已经喜欢过的作品再发 `liketype=like` 会回 `4102 参数异常`（当成已喜欢处理，别弹错）。详情接口 `oldapi/post/detail.api` 的响应里带 `liked` / `shared` / `subscribed`，`normDetail` 把它透传成 `post.liked`，用来点亮「已喜欢」。
-- 订阅标签页是**大卡片**：标题 + 更新数 badge + 3 张缩略图（不要再加大图）。缩略图靠 `IntersectionObserver`（`rootMargin: 700px`）滚到眼前才拉，并发 3 个任务，结果落盘 `localStorage['lofterTagCards']`；纯文字标签（`/api/tag` 返回的帖子全是 `type:1`、没有 `cover`，`/api/taginfo` 的 `cover` 也是空）没有图可显示，用同色系占位块，别留三个白洞。
+- 订阅标签页是**大卡片**：标题 + 更新数 badge + 3 张缩略图（不要再加大图）。缩略图靠 `IntersectionObserver`（`rootMargin: 700px`）滚到眼前才拉，并发 3 个任务，结果落盘 `localStorage['lofterTagCards']`；纯文字标签（`/api/tag` 返回的帖子全是 `type:1`、没有 `cover`，`/api/taginfo` 的 `cover` 也是空）没有图可显示，用很淡的同色系占位块，别留三个白洞。
+- **LOFTER 不提供「标签下共有多少作品」**：`oldapi/tagPosts.api` 的 `response` 只有 `{type, updateTime, items, topPostIds, offset}`，话题页 `__initialize_data__.tagInfo` 只有 `{tagName, joinedNum, tagViewCount, lastUpdateTime, imageUrl}`。所以标签卡副标题不要显示 `N 件作品`（那是拿第一页条数冒充的）；现在是「置顶作品标题/摘要」，纯文字标签显示 `N 人关注 · M 次浏览`，两样都没有就把这一行收起（`.tag-big-sub:empty`）。
+- 推荐流里的视频帖：列表接口不带时长、`firstImageWH` 也可能缺，`cardEl` 对 `type 3/4` 默认按 16:9 摆（别再退回 0.78 的竖条），`fillVideoDurations()` 会对缺时长的视频卡补一次 `/api/post` 拿 `embed.duration`，按帖子 id 缓存在内存里，瀑布流重排后重贴角标。`normDetail` 里 `dur` 有 `video.duration` 兜底。
+- 帖子详情的「屏蔽」按钮 = 打开「不想看这条？」面板（作者 + 当前作品的标签都能选），不要在详情页直接 `muteBlog`；在详情页里屏蔽成功后要 `closeSheet(); back();`（这条内容已经不该看了）。
 - 请求日志会打印所有非 `/api/` 路径；接口出错打印 `[api]` 行带状态码和耗时，排障先看它。
