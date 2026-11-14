@@ -1027,6 +1027,156 @@
     load();
   }
 
+  // ================= 页面：关注 / 粉丝列表 =================
+  function relRowEl(u) {
+    const el = document.createElement('a');
+    el.className = 'rel-row';
+    el.href = '#/blog/' + encodeURIComponent(u.name || '');
+    el.innerHTML = `
+      ${u.avatar
+        ? `<img class="rel-ava" src="${esc(thumb(u.avatar, 160))}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">`
+        : `<div class="rel-ava rel-ava-ph">${icon('user')}</div>`}
+      <div class="rel-main">
+        <div class="rel-nick">${esc(u.nick || u.name || 'LOFTER 用户')}</div>
+        <div class="rel-sub">@${esc(u.name || '')}${u.intro ? ' · ' + esc(u.intro) : ''}</div>
+      </div>
+      ${u.followers ? `<span class="rel-count">${num(u.followers)} 粉丝</span>` : ''}`;
+    return el;
+  }
+
+  async function viewRelation(kind) {
+    setTab('me');
+    const isFans = kind === 'fans';
+    setHeader(`
+      <button class="icon-btn" id="btn-back" aria-label="返回">${icon('back')}</button>
+      <div class="h-title">${isFans ? '粉丝' : '关注'}</div>
+      <div class="spacer"></div>
+    `);
+    $('#btn-back').addEventListener('click', back);
+    viewEl.innerHTML = `
+      <div class="channels" id="rel-tabs">
+        <button class="ch ${isFans ? '' : 'on'}" data-rel="following">关注</button>
+        <button class="ch ${isFans ? 'on' : ''}" data-rel="fans">粉丝</button>
+      </div>
+      <div id="rel-body"></div>`;
+    $('#rel-tabs').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-rel]');
+      if (!b) return;
+      const next = b.dataset.rel;
+      if ((next === 'fans') === isFans) return;
+      location.hash = '#/relation?type=' + next;
+    });
+    const body = $('#rel-body');
+    if (!NATIVE) {
+      body.innerHTML = emptyEl('关注 / 粉丝列表需要先在 App 内登录 LOFTER', false);
+      return;
+    }
+    const list = document.createElement('div');
+    list.className = 'rel-list';
+    body.appendChild(list);
+    const sentinel = document.createElement('div');
+    sentinel.id = 'sentinel';
+    sentinel.style.height = '1px';
+    body.appendChild(sentinel);
+
+    const token = navId;
+    let offset = 0, done = false, loading = false;
+    for (let i = 0; i < 8; i++) list.appendChild(skeletonEl(64));
+
+    async function load() {
+      if (loading || done || token !== navId) return;
+      loading = true;
+      try {
+        const d = await api('/api/relation', { type: kind, offset });
+        if (token !== navId) return;
+        list.querySelectorAll('.skeleton').forEach((n) => n.remove());
+        const arr = d.list || [];
+        if (!arr.length && !offset) {
+          list.innerHTML = `<div class="empty"><div class="big">🍃</div><p>${isFans ? '还没有粉丝' : '还没有关注任何人'}</p></div>`;
+        }
+        for (const u of arr) list.appendChild(relRowEl(u));
+        offset = d.next != null ? d.next : -1;
+        done = !d.hasMore || offset < 0;
+      } catch (err) {
+        if (token !== navId) return;
+        list.querySelectorAll('.skeleton').forEach((n) => n.remove());
+        if (!offset) {
+          body.innerHTML = emptyEl(err.message || '列表加载失败', true);
+          body.querySelector('.retry')?.addEventListener('click', () => render());
+        } else {
+          toast(err.message || '加载失败');
+        }
+        done = true;
+      } finally {
+        loading = false;
+      }
+    }
+
+    const io = new IntersectionObserver((en) => { if (en.some((x) => x.isIntersecting)) load(); }, { rootMargin: '600px 0px' });
+    io.observe(sentinel);
+    load();
+  }
+
+  // ================= 页面：账号收藏 =================
+  async function viewFavorites() {
+    setTab('me');
+    setHeader(`
+      <button class="icon-btn" id="btn-back" aria-label="返回">${icon('back')}</button>
+      <div class="h-title">账号收藏</div>
+      <div class="spacer"></div>
+    `);
+    $('#btn-back').addEventListener('click', back);
+    if (!NATIVE) {
+      viewEl.innerHTML = `<div style="padding:16px">${emptyEl('账号收藏需要先在 App 内登录 LOFTER', false)}</div>`;
+      return;
+    }
+    viewEl.innerHTML = `<div class="feed"><div class="masonry" id="masonry"></div><div class="load-more" id="loadmore"></div><div id="sentinel" style="height:1px"></div></div>`;
+    const m = new Masonry($('#masonry'), colsFor());
+    appendSkeletons(m, 6);
+    const token = navId;
+    let offset = 0, done = false, loading = false, total = 0;
+
+    async function load() {
+      if (loading || done || token !== navId) return;
+      loading = true;
+      try {
+        const d = await api('/api/favorites', { offset });
+        if (token !== navId) return;
+        $('#masonry').querySelectorAll('.skeleton').forEach((n) => n.remove());
+        total = d.count || total;
+        const posts = (d.posts || []).filter((p) => !isBlockedPost(p));
+        if (!posts.length) {
+          done = true;
+          if (!offset) $('#masonry').innerHTML = `<div class="empty"><div class="big">🍃</div><p>账号里还没有收藏</p></div>`;
+        } else {
+          for (const p of posts) m.add(cardEl(p));
+          bindImages(viewEl);
+          currentFeedExtra.push(...posts);
+        }
+        if (d.hasMore && d.nextOffset >= 0 && d.nextOffset !== offset) offset = d.nextOffset;
+        else done = true;
+        const more = $('#loadmore');
+        if (more) more.textContent = done ? (total ? '共 ' + num(total) + ' 件收藏' : '') : '已显示 ' + offset + ' 件 · 继续下拉加载更多';
+      } catch (err) {
+        if (token !== navId) return;
+        $('#masonry').querySelectorAll('.skeleton').forEach((n) => n.remove());
+        if (!offset) {
+          viewEl.innerHTML = `<div style="padding:16px">${emptyEl(err.message || '收藏加载失败', true)}</div>`;
+          viewEl.querySelector('.retry')?.addEventListener('click', () => render());
+        } else {
+          toast(err.message || '加载失败');
+        }
+        done = true;
+      } finally {
+        loading = false;
+      }
+    }
+
+    const io = new IntersectionObserver((en) => { if (en.some((x) => x.isIntersecting)) load(); }, { rootMargin: '700px 0px' });
+    io.observe($('#sentinel'));
+    load();
+  }
+
   // ================= 页面：帖子详情 =================
   async function viewPost(blogId, postId) {
     setTab(null);
@@ -1833,12 +1983,16 @@
         <button id="retry-profile">重试</button>
       </div>` : ''}
       <div class="me-stats">
-        <div><b>${store.saved.length}</b><span>收藏</span></div>
+        ${logged ? `
+        <a href="#/relation?type=following"><b>${num(counts.following || 0)}</b><span>关注</span></a>
+        <a href="#/relation?type=fans"><b>${num(counts.followers || 0)}</b><span>粉丝</span></a>
+        <a href="#/favorites"><b>${num(counts.favorites || 0)}</b><span>收藏</span></a>` : ''}
+        <div><b>${store.saved.length}</b><span>本机收藏</span></div>
         <div><b>${store.history.length}</b><span>浏览</span></div>
-        <div><b>${subCount || (tags.length || '默认')}</b><span>${subCount ? '订阅标签' : '兴趣标签'}</span></div>
       </div>
       <div class="list-card">
-        <a class="list-row" href="#/saved">${icon('bookmark')}我的收藏<span class="val">${store.saved.length} ${icon('chevron')}</span></a>
+        ${logged ? `<a class="list-row" href="#/favorites">${icon('heart')}账号收藏<span class="val">${num(counts.favorites || 0)} ${icon('chevron')}</span></a>` : ''}
+        <a class="list-row" href="#/saved">${icon('bookmark')}本机收藏<span class="val">${store.saved.length} ${icon('chevron')}</span></a>
         <a class="list-row" href="#/history">${icon('clock')}浏览历史<span class="val">${store.history.length} ${icon('chevron')}</span></a>
         ${logged ? `<button class="list-row" id="publish-btn">${icon('external')}发布作品<span class="val"></span></button>` : ''}
       </div>
@@ -2327,6 +2481,8 @@
       if (path === '/blocked') return viewBlocked();
       if (path === '/muted') return viewMuted();
       if (path === '/blacklist') return viewBlacklist();
+      if (path === '/relation') return await viewRelation(q.get('type') === 'fans' ? 'fans' : 'following');
+      if (path === '/favorites') return await viewFavorites();
       if (path === '/about') return viewAbout();
       if (path === '/diag') return viewDiag();
       if (path === '/compose') return viewCompose();

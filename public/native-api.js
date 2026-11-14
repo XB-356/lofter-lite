@@ -541,6 +541,10 @@
           const ur = await fetchEnvelope(USERCOUNTS_BASE);
           if (ur.data) counts = ur.data;
         } catch (e) {}
+        // usercounts 的真实结构：response.userStatistic 里是 followingCount / favoritePostCount，
+        // response.counts 是「每个博客一份」的数组（数组元素里有 followerCount / followingCount）
+        const stat = (counts && counts.userStatistic) || {};
+        const blogCounts = counts && Array.isArray(counts.counts) ? (counts.counts[0] || {}) : ((counts && counts.counts) || {});
         return {
           nick: nick || name || 'LOFTER 用户',
           name,
@@ -548,8 +552,9 @@
           intro: deepFind(b, ['selfIntro', 'intro', 'description']),
           id: deepFind(b, ['blogId', 'id']),
           counts: {
-            following: Number(deepFind(counts, ['followCount', 'follows', 'following', 'attentionCount', 'subscribeCount']) || 0),
-            followers: Number(deepFind(counts, ['fansCount', 'followers', 'fans', 'followerCount']) || 0),
+            following: Number(stat.followingCount || blogCounts.followingCount || deepFind(counts, ['followCount', 'follows', 'following', 'attentionCount']) || 0),
+            followers: Number(blogCounts.followerCount || stat.followerCount || deepFind(counts, ['fansCount', 'followers', 'fans', 'followerCount']) || 0),
+            favorites: Number(stat.favoritePostCount || blogCounts.favoritePostCount || deepFind(counts, ['favoritePostCount', 'likeCount', 'favoriteCount', 'likes']) || 0),
             likes: Number(deepFind(counts, ['likeCount', 'likes', 'favoriteCount', 'favCount']) || 0),
           },
         };
@@ -715,6 +720,69 @@
       authorDebug: debug,
       keys: [],
       postKeys: [],
+    };
+  }
+
+  // ---------------- 关注 / 粉丝列表 ----------------
+  const RELATION_URLS = {
+    following: 'https://api.lofter.com/v1.1/userfollowing.api?product=' + PRODUCT,
+    fans: 'https://api.lofter.com/v1.1/blogfollower.api?product=' + PRODUCT,
+  };
+
+  async function relationList(type, offset) {
+    if (!(await probeLogin())) throw new Error('请先登录 LOFTER');
+    const kind = type === 'fans' ? 'fans' : 'following';
+    const domain = await myDomain();
+    const host = domain && /\.lofter\.com$/.test(domain) ? domain : (domain ? domain + '.lofter.com' : '');
+    if (!host) throw new Error('没读到账号域名，先点右上角刷新试试');
+    const off = Number(offset) || 0;
+    const url = RELATION_URLS[kind] + '&blogdomain=' + encodeURIComponent(host) + '&offset=' + off + '&limit=20';
+    const text = await req(url, { headers: { 'User-Agent': APP_UA, Accept: 'application/json' } });
+    let j;
+    try { j = JSON.parse(text); } catch (e) { throw new Error('列表返回了异常内容'); }
+    const meta = j.meta || {};
+    if (meta.status && meta.status !== 200) throw new Error(meta.msg || '列表读取失败');
+    const arr = (j.response || []).filter(Boolean);
+    const list = arr.map((it) => {
+      const bi = it.blogInfo || {};
+      return {
+        id: bi.blogId || it.blogId || 0,
+        name: bi.blogName || '',
+        nick: bi.blogNickName || bi.blogName || 'LOFTER 用户',
+        avatar: bi.bigAvaImg || '',
+        intro: bi.selfIntro || '',
+        followers: Number(it.follower || 0) || 0,
+        following: it.following === undefined ? null : !!it.following,
+        time: it.followTime || 0,
+      };
+    }).filter((x) => x.name);
+    return { list, next: list.length >= 20 ? off + arr.length : -1, hasMore: arr.length >= 20, type: kind };
+  }
+
+  // ---------------- 账号收藏（喜欢） ----------------
+  const FAVORITES_URL = 'https://api.lofter.com/v1.1/batchdata.api?product=' + PRODUCT
+    + '&supportposttypes=1,2,3,4,5,6&postdigestnew=1&returnData=1&method=favorites';
+
+  async function favoritePosts(offset) {
+    if (!(await probeLogin())) throw new Error('请先登录 LOFTER');
+    const domain = await myDomain();
+    const host = domain && /\.lofter\.com$/.test(domain) ? domain : (domain ? domain + '.lofter.com' : '');
+    if (!host) throw new Error('没读到账号域名，先点右上角刷新试试');
+    const off = Number(offset) || 0;
+    const url = FAVORITES_URL + '&blogdomain=' + encodeURIComponent(host) + '&offset=' + off + '&limit=20';
+    const text = await req(url, { headers: { 'User-Agent': APP_UA, Accept: 'application/json' } });
+    let j;
+    try { j = JSON.parse(text); } catch (e) { throw new Error('收藏列表返回了异常内容'); }
+    const meta = j.meta || {};
+    if (meta.status && meta.status !== 200) throw new Error(meta.msg || '收藏列表读取失败');
+    const d = j.response || {};
+    const items = (d.items || []).filter(Boolean);
+    const posts = items.map(normPost).filter(Boolean).filter((p) => !p.ai && !p.locked);
+    return {
+      posts,
+      count: Number(d.count) || 0,
+      nextOffset: posts.length ? off + items.length : -1,
+      hasMore: items.length >= 20,
     };
   }
 
@@ -909,6 +977,8 @@
     '/api/post': (p) => postDetail(p.blogId, p.postId),
     '/api/comments': (p) => comments(p.blogId, p.postId, Number(p.offset) || 0),
     '/api/follow': (p) => followFeed(p.cursor || '0,0,0'),
+    '/api/relation': (p) => relationList(p.type, Number(p.offset) || 0),
+    '/api/favorites': (p) => favoritePosts(Number(p.offset) || 0),
     '/api/like': (p) => likePost(p.blogId, p.postId, p.like === '1'),
     '/api/follow-blog': (p) => followBlog(p.blogId, p.domain, p.follow === '1'),
     '/api/comment-add': (p) => addComment(p.blogId, p.postId, p.content, p.parentId),
