@@ -565,6 +565,8 @@
       const p = findPost(c.dataset.id);
       if (p && (p.tags || []).indexOf(tag) >= 0) c.remove();
     });
+    // 在详情页里屏蔽当前作品的标签 → 这条应该看不见了，退回上一页
+    if ((location.hash || '').indexOf('#/post/') === 0) { closeSheet(); back(); }
   }
   function confirmBlock(tag) {
     if (confirm('屏蔽 #' + tag + '？\n之后带这个标签的内容会自动隐藏。')) blockTag(tag);
@@ -587,6 +589,8 @@
       const p = findPost(c.dataset.id);
       if (p && isBlockedPost(p)) c.remove();
     });
+    // 在详情页屏蔽作者后，这条内容也不该再显示
+    if ((location.hash || '').indexOf('#/post/') === 0) { closeSheet(); back(); }
     return true;
   }
   function unmuteBlog(name) {
@@ -1493,22 +1497,9 @@
       if (navigator.share) navigator.share({ title: post.title || post.author.nick, url: post.url }).catch(() => {});
       else openExternal(post.url);
     });
+    // 详情页的「屏蔽」= 打开「不想看这条？」：可屏蔽作者，也可屏蔽作品里的标签
     const muteAct = $('#act-mute');
-    $('#act-mute')?.addEventListener('click', () => {
-      const ref = blogRefOf(post);
-      if (!ref) return;
-      const on = mutedBlogList().some((x) => x.name === ref.name);
-      if (on) {
-        unmuteBlog(ref.name);
-        muteAct.classList.remove('on');
-        muteAct.querySelector('span').textContent = '屏蔽';
-        toast('已取消屏蔽 @' + ref.nick);
-      } else if (confirm('屏蔽 @' + ref.nick + '？\n只在这台手机上隐藏 TA 的内容，不影响账号、不通知对方。')) {
-        muteBlog(ref, false);
-        muteAct.classList.add('on');
-        muteAct.querySelector('span').textContent = '已屏蔽';
-      }
-    });
+    $('#act-mute')?.addEventListener('click', () => openBlockSheet(post));
     let replyTarget = null;
 
     async function sendComment(btn) {
