@@ -1,4 +1,4 @@
-// LOFTER Lite 桌面启动器（Windows，WinForms，零依赖：用系统自带 csc.exe 编译）
+﻿// LOFTER Lite 桌面启动器（Windows，WinForms，零依赖：用系统自带 csc.exe 编译）
 // 编译：desktop\build.ps1  →  desktop\LOFTER-Lite-Launcher.exe
 // 说明：目标 .NET Framework 4.x 的 C# 5 语法（不要用字符串内插 / ?. / nameof 等新语法）
 using System;
