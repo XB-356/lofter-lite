@@ -5,6 +5,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.os.Build;
@@ -112,6 +113,11 @@ public class MainActivity extends Activity {
             w.setStatusBarColor(Color.parseColor("#F4F4F6"));
             w.setNavigationBarColor(Color.WHITE);
             w.getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+        }
+
+        // debug 包（aapt --debug-mode）才开 WebView 远程调试，用电脑 Chrome 打开 chrome://inspect 就能调试页面
+        if ((getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
+            WebView.setWebContentsDebuggingEnabled(true);
         }
 
         web.loadUrl("file:///android_asset/www/index.html");

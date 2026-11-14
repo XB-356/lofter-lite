@@ -12,7 +12,9 @@
 #
 # 产物：android\build\lofter-lite.apk（签名用 android\lofter.jks，首次自动生成）
 param(
-    [string]$Sdk = ""
+    [string]$Sdk = "",
+    # 打 debug 包：manifest 加 android:debuggable=true，并开启 WebView 远程调试（chrome://inspect）
+    [switch]$Debug
 )
 
 $ErrorActionPreference = 'Stop'
@@ -96,7 +98,9 @@ try {
 
     # ---------- 打包 APK ----------
     Step 'aapt: 打包资源'
-    & (Join-Path $BT 'aapt.exe') package -f -M AndroidManifest.xml -S res -I $AJ -A assets -F build\app-unsigned.apk
+    $packArgs = @('package', '-f', '-M', 'AndroidManifest.xml', '-S', 'res', '-I', $AJ, '-A', 'assets', '-F', 'build\app-unsigned.apk')
+    if ($Debug) { $packArgs += '--debug-mode' }   # 让 aapt 在 manifest 里插入 android:debuggable=true
+    & (Join-Path $BT 'aapt.exe') @packArgs
     if ($LASTEXITCODE -ne 0) { Die 'aapt 打包失败' }
     Copy-Item build\dex\classes.dex build\classes.dex -Force
     Push-Location build
@@ -120,7 +124,7 @@ try {
     Step 'apksigner: 签名'
     # 不能直接调 apksigner.bat：它依赖 SDK 里的 tools\lib\find_java.bat 来定位 java，
     # 而我们只装了最小件，bat 会静默 :EOF 退出（exit 0 但什么都不产出）。直接用 java -jar。
-    $apk = Join-Path $here 'build\lofter-lite.apk'
+    $apk = Join-Path $here $(if ($Debug) { 'build\lofter-lite-debug.apk' } else { 'build\lofter-lite.apk' })
     if (Test-Path $apk) { Remove-Item -Force $apk }
     & $javaExe -jar (Join-Path $BT 'lib\apksigner.jar') sign --ks $ks `
         --ks-pass pass:lofterlite --key-pass pass:lofterlite `
@@ -128,10 +132,13 @@ try {
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path $apk)) { Die 'apksigner 签名失败' }
 
     $size = [math]::Round((Get-Item $apk).Length / 1KB, 1)
-    Ok "APK: $apk ($size KB)"
+    Ok "APK: $apk ($size KB)$(if ($Debug) { '  [debug: debuggable + WebView 远程调试]' })"
     Write-Host ''
-    Write-Host '安装到手机（数据线连上、开启 USB 调试后）：' -ForegroundColor Gray
-    Write-Host '  node scripts/device.mjs install' -ForegroundColor Gray
+    Write-Host '安装到手机：' -ForegroundColor Gray
+    Write-Host "  adb install -r `"$apk`"" -ForegroundColor Gray
+    if ($Debug) {
+        Write-Host '调试页面：手机连电脑后，Chrome 打开 chrome://inspect' -ForegroundColor Gray
+    }
 }
 finally {
     Pop-Location
