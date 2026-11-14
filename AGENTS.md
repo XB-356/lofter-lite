@@ -62,6 +62,7 @@ test/                node:test：server(HTTP) / lofter(归一化) / cache / live
 - `desktop/` 是 C#：只能写 **C# 5** 语法（系统自带 csc.exe 是 .NET Framework 4.x 的旧编译器），不要用字符串内插、`?.`、`nameof`、`=>` 表达式体成员等新语法。
 - `desktop/src/Launcher.cs`、`desktop/build.ps1` 这类含中文的 `.cs` / `.ps1` **必须存成 UTF-8 with BOM**：csc 与 Windows PowerShell 5.1 默认按 ANSI(GBK) 读源码，没 BOM 会乱码甚至语法错误。同理，**不要用 `Get-Content`/`Set-Content` 改含中文的文件**（PS 5.1 默认按 GBK 解码，会把 UTF-8 中文写坏），要用 `[IO.File]::ReadAllText($p,[Text.UTF8Encoding]::new($false))` + `WriteAllText`。
 - APK 的 WebView 调试只在 debug 包生效：`aapt --debug-mode` 写 `debuggable=true` + `MainActivity` 里按 `FLAG_DEBUGGABLE` 调 `setWebContentsDebuggingEnabled(true)`。release 包不要带这些。
+- 「不想看」有三种，别混在一起：`blockedTags`（标签屏蔽）、`mutedBlogs`（**屏蔽用户**：只在这台设备上隐藏，不通知对方、不写账号）、`blockedBlogs`（**拉黑**：账号级黑名单的本地镜像，来自 `/api/sync-blocks`）。过滤统一走 `isBlockedPost()`，不要在渲染处各写一套；两个列表在 UI 上也必须是两个入口（`#/muted` / `#/blacklist`）。
 
 ## 不要做
 

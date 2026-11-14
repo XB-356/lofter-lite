@@ -142,7 +142,7 @@
   const store = {
     settings: Object.assign({
       theme: 'auto', tags: [], reduceMotion: false,
-      feedMode: 'recommend', onlyTag: '', blockedTags: [], blockedBlogs: [],
+      feedMode: 'recommend', onlyTag: '', blockedTags: [], blockedBlogs: [], mutedBlogs: [],
       profile: null, subscribedTags: [], accountSyncAt: 0, tagSeen: {}, followRecommend: true, composeDraft: null,
     }, loadLS('settings', {})),
     saved: loadLS('saved', []),
@@ -453,6 +453,10 @@
   function blockedBlogList() {
     return (store.settings.blockedBlogs || []).map((b) => (typeof b === 'string' ? { name: b, nick: b } : b));
   }
+  // 本机屏蔽的用户（mute）：只隐藏内容，不写账号、不通知对方
+  function mutedBlogList() {
+    return (store.settings.mutedBlogs || []).map((b) => (typeof b === 'string' ? { name: b, nick: b } : b));
+  }
   function fmtDate(ts) {
     if (!ts) return '';
     const d = new Date(ts);
@@ -462,10 +466,15 @@
   function isBlockedPost(p) {
     const b = store.settings.blockedTags || [];
     if (b.length && (p.tags || []).some((t) => b.indexOf(t) >= 0)) return true;
+    const a = p.author || {};
+    const mb = mutedBlogList();
+    if (mb.length && (a.name || a.nick)) {
+      if (mb.some((x) => (a.name && x.name === a.name) || (a.nick && (x.nick === a.nick || x.name === a.nick)))) return true;
+    }
     const bb = blockedBlogList();
     if (bb.length) {
-      const name = p.author && p.author.name;
-      const nick = p.author && p.author.nick;
+      const name = a.name;
+      const nick = a.nick;
       if (bb.some((x) => x.name === name || x.name === nick || x.nick === nick)) return true;
     }
     return false;
@@ -494,12 +503,48 @@
   function confirmBlock(tag) {
     if (confirm('屏蔽 #' + tag + '？\n之后带这个标签的内容会自动隐藏。')) blockTag(tag);
   }
+  // 屏蔽用户：本机隐藏 TA 的内容。和「拉黑」（账号黑名单）是两件事。
+  function muteBlog(ref, silent) {
+    if (!ref) return false;
+    const a = typeof ref === 'string' ? { name: ref, nick: ref } : ref;
+    if (!a.name) return false;
+    const list = mutedBlogList();
+    if (list.some((b) => b.name === a.name)) {
+      if (!silent) toast('已经屏蔽过 @' + (a.nick || a.name));
+      return false;
+    }
+    list.unshift({ name: a.name, nick: a.nick || a.name, avatar: a.avatar || '', time: Date.now() });
+    store.settings.mutedBlogs = list;
+    store.saveSettings();
+    if (!silent) toast('已屏蔽 @' + (a.nick || a.name) + '（仅本机）');
+    $$('.card').forEach((c) => {
+      const p = findPost(c.dataset.id);
+      if (p && isBlockedPost(p)) c.remove();
+    });
+    return true;
+  }
+  function unmuteBlog(name) {
+    store.settings.mutedBlogs = mutedBlogList().filter((b) => b.name !== name);
+    store.saveSettings();
+  }
+  function blogRefOf(post) {
+    const a = (post && post.author) || {};
+    if (!a.name) return null;
+    return { name: a.name, nick: a.nick || a.name, avatar: a.avatar || '' };
+  }
+  let sheetPost = null;
   function openBlockSheet(post) {
+    sheetPost = post;
     const tags = (post.tags || []).slice(0, 10);
+    const ref = blogRefOf(post);
+    const muted = ref && mutedBlogList().some((b) => b.name === ref.name);
     openSheet(`
       <h3>不想看这条？</h3>
       <p class="hint">屏蔽标签后，推荐、话题、关注流里带这个标签的内容都会自动隐藏。</p>
       <div class="chips">${tags.map((t) => `<button class="chip" data-block="${esc(t)}">屏蔽 #${esc(t)}</button>`).join('')}</div>
+      ${ref ? `<div class="blk-sec-title">不想看这个人？</div>
+        <p class="hint">只是这台手机上隐藏 TA 的内容，不会通知对方、也不会改动账号。拉黑（账号黑名单）请去「我的 → 拉黑名单」。</p>
+        <button class="btn ${muted ? 'muted-on' : ''}" data-mute-blog="${esc(ref.name)}" style="width:100%">${muted ? '已屏蔽 @' + esc(ref.nick) + ' · 点此取消' : '屏蔽 @' + esc(ref.nick)}</button>` : ''}
       <div class="actions">
         ${tags[0] ? `<button class="btn" data-only="${esc(tags[0])}">只看 #${esc(tags[0])}</button>` : ''}
         <button class="btn ghost" data-close>取消</button>
@@ -731,6 +776,20 @@
     if (opt) { setTheme(opt.dataset.themeOpt); closeSheet(); return; }
     const blk = e.target.closest('[data-block]');
     if (blk) { blockTag(blk.dataset.block); closeSheet(); return; }
+    const muteBtn = e.target.closest('[data-mute-blog]');
+    if (muteBtn) {
+      const ref = blogRefOf(sheetPost);
+      const name = (ref && ref.name) || muteBtn.dataset.muteBlog;
+      if (mutedBlogList().some((x) => x.name === name)) {
+        unmuteBlog(name);
+        toast('已取消屏蔽 @' + name);
+      } else {
+        muteBlog(ref || name, false);
+      }
+      closeSheet();
+      if ((location.hash || '') === '#/muted') viewMuted();
+      return;
+    }
     const choose = e.target.closest('[data-only-choose]');
     if (choose) { setOnlyTag(choose.dataset.onlyChoose); return; }
     const onlyBtn = e.target.closest('[data-only]');
@@ -897,9 +956,23 @@
             <button class="icon-btn" id="btn-back" aria-label="返回">${icon('back')}</button>
             <div class="spacer"></div>
             <button class="icon-btn" id="btn-follow-blog" aria-label="关注">${icon('user')}</button>
+            <button class="icon-btn" id="btn-mute-blog" aria-label="屏蔽该用户">${icon('shield')}</button>
             <button class="icon-btn" id="btn-open-blog" aria-label="在 LOFTER 打开">${icon('external')}</button>`;
           $('#btn-back').addEventListener('click', back);
           $('#btn-open-blog').addEventListener('click', () => openExternal(b.url));
+          if (mutedBlogList().some((x) => x.name === b.name)) $('#btn-mute-blog').classList.add('accent');
+          $('#btn-mute-blog')?.addEventListener('click', () => {
+            const ref = { name: b.name, nick: b.nick, avatar: b.avatar };
+            const on = mutedBlogList().some((x) => x.name === ref.name);
+            if (on) {
+              unmuteBlog(ref.name);
+              $('#btn-mute-blog').classList.remove('accent');
+              toast('已取消屏蔽 @' + (ref.nick || ref.name));
+            } else if (confirm('屏蔽 @' + (b.nick || b.name) + '？\n只在这台手机上隐藏 TA 的内容，不影响账号、不通知对方。')) {
+              muteBlog(ref, false);
+              $('#btn-mute-blog').classList.add('accent');
+            }
+          });
           let following = false;
           $('#btn-follow-blog')?.addEventListener('click', async () => {
             try {
@@ -1012,6 +1085,7 @@
             <button class="act" id="act-like">${icon('heart')}<span>喜欢</span></button>
             <button class="act" id="act-follow">${icon('user')}<span>关注</span></button>
             <button class="act" id="act-share">${icon('share')}<span>分享</span></button>
+            <button class="act" id="act-mute">${icon('shield')}<span>屏蔽</span></button>
           </div>
           <button class="orig-btn" id="orig-open">${icon('external')} 在 LOFTER 打开原文</button>
           <section class="cmt-sec" id="comments">
@@ -1044,6 +1118,11 @@
 
     window.scrollTo(0, 0);
     let liked = false, following = false;
+    if (post.author && mutedBlogList().some((x) => x.name === post.author.name)) {
+      $('#act-mute')?.classList.add('on');
+      const s = $('#act-mute')?.querySelector('span');
+      if (s) s.textContent = '已屏蔽';
+    }
     const likeBtn = $('#act-like');
     likeBtn?.addEventListener('click', async () => {
       try {
@@ -1067,6 +1146,22 @@
     $('#act-share')?.addEventListener('click', () => {
       if (navigator.share) navigator.share({ title: post.title || post.author.nick, url: post.url }).catch(() => {});
       else openExternal(post.url);
+    });
+    const muteAct = $('#act-mute');
+    $('#act-mute')?.addEventListener('click', () => {
+      const ref = blogRefOf(post);
+      if (!ref) return;
+      const on = mutedBlogList().some((x) => x.name === ref.name);
+      if (on) {
+        unmuteBlog(ref.name);
+        muteAct.classList.remove('on');
+        muteAct.querySelector('span').textContent = '屏蔽';
+        toast('已取消屏蔽 @' + ref.nick);
+      } else if (confirm('屏蔽 @' + ref.nick + '？\n只在这台手机上隐藏 TA 的内容，不影响账号、不通知对方。')) {
+        muteBlog(ref, false);
+        muteAct.classList.add('on');
+        muteAct.querySelector('span').textContent = '已屏蔽';
+      }
     });
     let replyTarget = null;
 
@@ -1710,6 +1805,8 @@
       <div class="list-card">
         <a class="list-row" href="#/tags">${icon('tag')}兴趣标签<span class="val">${tags.length ? esc(tags.slice(0, 3).join(' · ')) : '使用默认推荐'} ${icon('chevron')}</span></a>
         <a class="list-row" href="#/blocked">${icon('shield')}标签屏蔽<span class="val">${(store.settings.blockedTags || []).length} 个 ${icon('chevron')}</span></a>
+        <a class="list-row" href="#/muted">${icon('user')}屏蔽用户<span class="val">${mutedBlogList().length} 位 ${icon('chevron')}</span></a>
+        <a class="list-row" href="#/blacklist">${icon('shield')}拉黑名单<span class="val">${blockedBlogList().length} 位 ${icon('chevron')}</span></a>
         <button class="list-row" id="theme-row">${icon('palette')}外观<span class="val" id="theme-val">${themeLabel()}</span></button>
         <button class="list-row" id="clear-cache">${icon('trash')}<span class="danger">清除本地记录</span><span class="val"></span></button>
       </div>
@@ -1899,27 +1996,37 @@
         <div class="chips" style="margin-top:16px" id="blk-list">
           ${list.length ? list.map((t) => `<button class="chip on" data-unblock="${esc(t)}">#${esc(t)} ✕</button>`).join('') : '<div class="cmt-empty" style="padding:24px 0">还没有屏蔽任何标签</div>'}
         </div>
-        <div class="blk-sec-title">博主黑名单</div>
-        <div class="search-box" style="background:var(--bg-soft)">
-          ${icon('user')}
-          <input id="blk-blog-input" placeholder="输入博主域名，回车添加" maxlength="40">
-        </div>
-        <div class="chips" style="margin-top:12px" id="blk-blog-list">
-          ${blockedBlogList().length ? blockedBlogList().map((b) => `<div class="blk-blog">
-            <a class="blk-ava" href="#/blog/${encodeURIComponent(b.name)}" aria-label="查看主页">
-              <img src="${esc(b.avatar || '')}" alt="" onerror="this.style.visibility='hidden'">
-            </a>
-            <a class="blk-info" href="#/blog/${encodeURIComponent(b.name)}">
-              <b>${esc(b.nick || b.name)}</b><i>@${esc(b.name)}${b.time ? ' · ' + fmtDate(b.time) : ''}</i>
-            </a>
-            <button class="blk-del" data-unblock-blog="${esc(b.name)}" aria-label="移出黑名单">✕</button>
-          </div>`).join('') : '<div class="cmt-empty" style="padding:16px 0">还没有屏蔽任何博主</div>'}
-        </div>
+        <div class="blk-sec-title">屏蔽用户与拉黑</div>
+        <a class="list-row" href="#/muted">${icon('user')}屏蔽用户<span class="val">${mutedBlogList().length} 位 ${icon('chevron')}</span></a>
+        <a class="list-row" href="#/blacklist">${icon('shield')}拉黑名单<span class="val">${blockedBlogList().length} 位 ${icon('chevron')}</span></a>
         ${store.settings.lastSyncInfo ? `<p class="blk-sync-info">${esc(store.settings.lastSyncInfo)}</p>` : ''}
       </div>`;
-    $('#blk-sync')?.addEventListener('click', async () => {
-      const btn = $('#blk-sync');
-      btn.disabled = true; btn.textContent = '同步中…';
+    bindBlockSync(viewBlocked);
+    const input = $('#blk-input');
+    input.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      const v = input.value.trim();
+      if (!v) return;
+      blockTag(v);
+      viewBlocked();
+    });
+    $('#blk-list').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-unblock]');
+      if (!b) return;
+      const t = b.dataset.unblock;
+      store.settings.blockedTags = (store.settings.blockedTags || []).filter((x) => x !== t);
+      store.saveSettings();
+      toast('已取消屏蔽 #' + t);
+      viewBlocked();
+    });
+  }
+
+  // 账号黑名单同步（标签 + 博主），两个页面共用
+  function bindBlockSync(reload) {
+    const btn = $('#blk-sync');
+    btn?.addEventListener('click', async () => {
+      btn.disabled = true;
+      btn.textContent = '同步中…';
       try {
         const d = await api('/api/sync-blocks', {});
         const tags = new Set(store.settings.blockedTags || []);
@@ -1931,56 +2038,131 @@
           bmap.set(b.name, Object.assign({}, bmap.get(b.name) || {}, b));
         });
         store.settings.blockedBlogs = [...bmap.values()];
-        store.saveSettings();
         const err = (d.errors || [])[0];
         store.settings.lastSyncInfo = `同步结果：${(d.tags || []).length} 个标签、${(d.blogs || []).length} 位博主`
           + (err ? `；${err}` : '')
           + (d.keys ? `（字段：${Object.keys(d.keys).map((k) => k + '=' + d.keys[k].join('/')).join('，')}）` : '');
         store.saveSettings();
         toast(`同步完成：${(d.tags || []).length} 个标签、${(d.blogs || []).length} 位博主`);
-        viewBlocked();
+        reload();
       } catch (e) {
         toast('同步失败：' + e.message);
-        btn.disabled = false; btn.textContent = '从账号同步黑名单与标签';
+        btn.disabled = false;
+        btn.innerHTML = `${icon('refresh')} 从账号同步黑名单与标签`;
       }
     });
+  }
+
+  // ================= 页面：屏蔽用户（本机，不打扰对方） =================
+  function viewMuted() {
+    setTab(null);
+    setHeader(`
+      <button class="icon-btn" id="btn-back" aria-label="返回">${icon('back')}</button>
+      <div class="h-title">屏蔽用户</div>
+      <div class="spacer"></div>
+    `);
+    $('#btn-back').addEventListener('click', back);
+    const list = mutedBlogList();
+    viewEl.innerHTML = `
+      <div style="padding:14px 16px 40px" id="muted-wrap">
+        <p style="color:var(--sub);font-size:12.5px;line-height:1.7;margin:0 0 14px">
+          屏蔽只作用于<span style="color:var(--text)">这台设备</span>：推荐、话题、关注流里 TA 的作品会自动隐藏，不会通知对方，也不会改动你的 LOFTER 账号。
+          想真正拉黑（账号黑名单）请用<a href="#/blacklist" style="color:var(--accent)">「拉黑名单」</a>。
+        </p>
+        <div class="search-box" style="background:var(--bg-soft)">
+          ${icon('user')}
+          <input id="muted-input" placeholder="输入博主域名，回车添加" maxlength="64">
+        </div>
+        <div style="margin-top:16px" id="muted-list">
+          ${list.length ? list.map((b) => `<div class="blk-blog">
+            <a class="blk-ava" href="#/blog/${encodeURIComponent(b.name)}" aria-label="查看主页">
+              <img src="${esc(b.avatar || '')}" alt="" onerror="this.style.visibility='hidden'">
+            </a>
+            <a class="blk-info" href="#/blog/${encodeURIComponent(b.name)}">
+              <b>${esc(b.nick || b.name)}</b><i>@${esc(b.name)}${b.time ? ' · ' + fmtDate(b.time) : ''}</i>
+            </a>
+            <button class="blk-del" data-unmute-blog="${esc(b.name)}" aria-label="取消屏蔽">✕</button>
+          </div>`).join('') : '<div class="cmt-empty" style="padding:24px 0">还没有屏蔽任何用户</div>'}
+        </div>
+      </div>`;
+    const wrap = $('#muted-wrap');
+    const input = $('#muted-input');
+    input.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      const v = input.value.trim();
+      if (!v) return;
+      const name = v.replace(/^@/, '').replace(/^https?:\/\/[^/]+\//, '').split('/')[0];
+      if (!name) return;
+      muteBlog({ name, nick: name }, false);
+      viewMuted();
+    });
+    wrap.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-unmute-blog]');
+      if (!btn) return;
+      const n = btn.dataset.unmuteBlog;
+      unmuteBlog(n);
+      toast('已取消屏蔽 @' + n);
+      viewMuted();
+    });
+  }
+
+  // ================= 页面：拉黑名单（账号级黑名单） =================
+  function viewBlacklist() {
+    setTab(null);
+    setHeader(`
+      <button class="icon-btn" id="btn-back" aria-label="返回">${icon('back')}</button>
+      <div class="h-title">拉黑名单</div>
+      <div class="spacer"></div>
+    `);
+    $('#btn-back').addEventListener('click', back);
+    const list = blockedBlogList();
+    viewEl.innerHTML = `
+      <div style="padding:14px 16px 40px" id="blk-blog-wrap">
+        <p style="color:var(--sub);font-size:12.5px;line-height:1.7;margin:0 0 14px">
+          这里是<span style="color:var(--text)">账号级黑名单</span>（来自 LOFTER 账号，会同步到其它客户端）。
+          只是不想在某台手机看到某个人，请用<a href="#/muted" style="color:var(--accent)">「屏蔽用户」</a>。
+        </p>
+        <button class="btn" id="blk-sync" style="width:100%;margin-bottom:12px">${icon('refresh')} 从账号同步黑名单与标签</button>
+        <div class="search-box" style="background:var(--bg-soft)">
+          ${icon('user')}
+          <input id="blk-blog-input" placeholder="输入博主域名，回车加入本机名单" maxlength="64">
+        </div>
+        <p style="color:var(--sub);font-size:11.5px;line-height:1.6;margin:8px 0 0">在这里手动添加只记在本机；要真正拉黑对方，请在 LOFTER 官方客户端或网页里操作。</p>
+        <div style="margin-top:12px" id="blk-blog-list">
+          ${list.length ? list.map((b) => `<div class="blk-blog">
+            <a class="blk-ava" href="#/blog/${encodeURIComponent(b.name)}" aria-label="查看主页">
+              <img src="${esc(b.avatar || '')}" alt="" onerror="this.style.visibility='hidden'">
+            </a>
+            <a class="blk-info" href="#/blog/${encodeURIComponent(b.name)}">
+              <b>${esc(b.nick || b.name)}</b><i>@${esc(b.name)}${b.time ? ' · ' + fmtDate(b.time) : ''}</i>
+            </a>
+            <button class="blk-del" data-unblock-blog="${esc(b.name)}" aria-label="移出黑名单">✕</button>
+          </div>`).join('') : '<div class="cmt-empty" style="padding:16px 0">还没有拉黑任何博主</div>'}
+        </div>
+        ${store.settings.lastSyncInfo ? `<p class="blk-sync-info">${esc(store.settings.lastSyncInfo)}</p>` : ''}
+      </div>`;
+    bindBlockSync(viewBlacklist);
+    const wrap = $('#blk-blog-wrap');
     const blogInput = $('#blk-blog-input');
     blogInput?.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter') return;
       const v = blogInput.value.trim();
       if (!v) return;
       const list = blockedBlogList();
-      if (!list.some((b) => b.name === v)) list.push({ name: v, nick: v });
+      if (!list.some((b) => b.name === v)) list.push({ name: v, nick: v, time: Date.now() });
       store.settings.blockedBlogs = list;
       store.saveSettings();
       toast('已加入黑名单：' + v);
-      viewBlocked();
+      viewBlacklist();
     });
-    const input = $('#blk-input');
-    input.addEventListener('keydown', (e) => {
-      if (e.key !== 'Enter') return;
-      const v = input.value.trim();
-      if (!v) return;
-      blockTag(v);
-      viewBlocked();
-    });
-    viewEl.addEventListener('click', (e) => {
+    wrap.addEventListener('click', (e) => {
       const bb = e.target.closest('[data-unblock-blog]');
-      if (bb) {
-        const n = bb.dataset.unblockBlog;
-        store.settings.blockedBlogs = blockedBlogList().filter((x) => x.name !== n);
-        store.saveSettings();
-        toast('已移出黑名单：' + n);
-        viewBlocked();
-        return;
-      }
-      const b = e.target.closest('[data-unblock]');
-      if (!b) return;
-      const t = b.dataset.unblock;
-      store.settings.blockedTags = (store.settings.blockedTags || []).filter((x) => x !== t);
+      if (!bb) return;
+      const n = bb.dataset.unblockBlog;
+      store.settings.blockedBlogs = blockedBlogList().filter((x) => x.name !== n);
       store.saveSettings();
-      toast('已取消屏蔽 #' + t);
-      viewBlocked();
+      toast('已移出黑名单：' + n);
+      viewBlacklist();
     });
   }
 
@@ -2103,6 +2285,8 @@
       if (path === '/history') return viewList('history');
       if (path === '/tags') return await viewTagsSetting();
       if (path === '/blocked') return viewBlocked();
+      if (path === '/muted') return viewMuted();
+      if (path === '/blacklist') return viewBlacklist();
       if (path === '/about') return viewAbout();
       if (path === '/diag') return viewDiag();
       if (path === '/compose') return viewCompose();

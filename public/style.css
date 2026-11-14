@@ -643,6 +643,7 @@ body.immersive #app { padding-bottom: 0; }
 }
 .btn.primary { background: var(--accent); color: #fff; }
 .btn.ghost { background: transparent; color: var(--sub); }
+.btn.muted-on { background: var(--accent-weak); color: var(--accent); }
 
 /* ============ 空 / 错误 / 加载 ============ */
 .empty {
