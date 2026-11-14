@@ -94,4 +94,6 @@ test/                node:test：server(HTTP) / lofter(归一化) / cache / live
 - **`build-tools\*\apksigner.bat` / `d8.bat` 在只装了最小 SDK 件时会静默失败**：它们靠 `tools\lib\find_java.bat` 找 java，没有就 `goto :EOF` 直接退出且退出码 0。所以 `android/build.ps1` 直接 `java -jar lib\apksigner.jar` / `java -cp lib\d8.jar com.android.tools.r8.D8`，不要改回调 bat。
 - JDK 的 `javapath` 只有 java/javac，没有 `keytool`：`android/build.ps1` 会自己找 JDK 主目录（JAVA_HOME 或 `C:\Program Files\Java\jdk-*`）。
 - 真机装包报 `INSTALL_FAILED_USER_RESTRICTED` 是 vivo 的「USB 调试（安全设置）」没开（要登录 vivo 帐号）；绕开办法是 `adb push` 到 `/sdcard/Download/` 后手机上手动安装。
+- **点赞接口是 POST 表单，不是 GET**：`POST https://api.lofter.com/v1.1/like.api?product=…`，body 是 `liketype=like|unlike&postid=…&blogid=…&scene=note`。老写法（GET + `like=1`）上游现在只回 `meta.status=4101 发生错误，请重新尝试`；已经喜欢过的作品再发 `liketype=like` 会回 `4102 参数异常`（当成已喜欢处理，别弹错）。详情接口 `oldapi/post/detail.api` 的响应里带 `liked` / `shared` / `subscribed`，`normDetail` 把它透传成 `post.liked`，用来点亮「已喜欢」。
+- 订阅标签页是**大卡片**：标题 + 更新数 badge + 3 张缩略图（不要再加大图）。缩略图靠 `IntersectionObserver`（`rootMargin: 700px`）滚到眼前才拉，并发 3 个任务，结果落盘 `localStorage['lofterTagCards']`；纯文字标签（`/api/tag` 返回的帖子全是 `type:1`、没有 `cover`，`/api/taginfo` 的 `cover` 也是空）没有图可显示，用同色系占位块，别留三个白洞。
 - 请求日志会打印所有非 `/api/` 路径；接口出错打印 `[api]` 行带状态码和耗时，排障先看它。
