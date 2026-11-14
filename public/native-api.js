@@ -554,8 +554,12 @@
           counts: {
             following: Number(stat.followingCount || blogCounts.followingCount || deepFind(counts, ['followCount', 'follows', 'following', 'attentionCount']) || 0),
             followers: Number(blogCounts.followerCount || stat.followerCount || deepFind(counts, ['fansCount', 'followers', 'fans', 'followerCount']) || 0),
-            favorites: Number(stat.favoritePostCount || blogCounts.favoritePostCount || deepFind(counts, ['favoritePostCount', 'likeCount', 'favoriteCount', 'likes']) || 0),
-            likes: Number(deepFind(counts, ['likeCount', 'likes', 'favoriteCount', 'favCount']) || 0),
+            // LOFTER 把「喜欢」和「收藏」分开：喜欢是红心列表（favoritePostCount），
+            // 收藏是收藏夹里的作品数（subscribePostCount），推荐是转发出去的作品数（sharePostCount）。
+            likes: Number(stat.favoritePostCount || 0),
+            collections: Number(stat.subscribePostCount || 0),
+            shares: Number(stat.sharePostCount || 0),
+            favorites: Number(stat.favoritePostCount || 0),
           },
         };
       }
@@ -759,22 +763,23 @@
     return { list, next: list.length >= 20 ? off + arr.length : -1, hasMore: arr.length >= 20, type: kind };
   }
 
-  // ---------------- 账号收藏（喜欢） ----------------
-  const FAVORITES_URL = 'https://api.lofter.com/v1.1/batchdata.api?product=' + PRODUCT
-    + '&supportposttypes=1,2,3,4,5,6&postdigestnew=1&returnData=1&method=favorites';
+  // ---------------- 账号作品列表：喜欢 / 推荐 ----------------
+  const BATCH_URL = 'https://api.lofter.com/v1.1/batchdata.api?product=' + PRODUCT
+    + '&supportposttypes=1,2,3,4,5,6&postdigestnew=1&returnData=1';
 
-  async function favoritePosts(offset) {
+  // method=favorites 是「喜欢」（红心），method=shares 是「推荐」（转发出去的作品）
+  async function accountPosts(method, offset) {
     if (!(await probeLogin())) throw new Error('请先登录 LOFTER');
     const domain = await myDomain();
     const host = domain && /\.lofter\.com$/.test(domain) ? domain : (domain ? domain + '.lofter.com' : '');
     if (!host) throw new Error('没读到账号域名，先点右上角刷新试试');
     const off = Number(offset) || 0;
-    const url = FAVORITES_URL + '&blogdomain=' + encodeURIComponent(host) + '&offset=' + off + '&limit=20';
+    const url = BATCH_URL + '&method=' + method + '&blogdomain=' + encodeURIComponent(host) + '&offset=' + off + '&limit=20';
     const text = await req(url, { headers: { 'User-Agent': APP_UA, Accept: 'application/json' } });
     let j;
-    try { j = JSON.parse(text); } catch (e) { throw new Error('收藏列表返回了异常内容'); }
+    try { j = JSON.parse(text); } catch (e) { throw new Error('列表返回了异常内容'); }
     const meta = j.meta || {};
-    if (meta.status && meta.status !== 200) throw new Error(meta.msg || '收藏列表读取失败');
+    if (meta.status && meta.status !== 200) throw new Error(meta.msg || '列表读取失败');
     const d = j.response || {};
     const items = (d.items || []).filter(Boolean);
     const posts = items.map(normPost).filter(Boolean).filter((p) => !p.ai && !p.locked);
@@ -783,6 +788,63 @@
       count: Number(d.count) || 0,
       nextOffset: posts.length ? off + items.length : -1,
       hasMore: items.length >= 20,
+    };
+  }
+
+  const favoritePosts = (offset) => accountPosts('favorites', offset);
+  const sharedPosts = (offset) => accountPosts('shares', offset);
+
+  // ---------------- 账号收藏夹（收藏） ----------------
+  const FOLDER_LIST_URL = 'https://api.lofter.com/newapi/subFolder/list.json?offset=0&postId=0&blogId=0&type=1';
+  const FOLDER_DETAIL_URL = 'https://api.lofter.com/newapi/subFolder/getDetail.json';
+
+  async function collectionFolders() {
+    if (!(await probeLogin())) throw new Error('请先登录 LOFTER');
+    const text = await req(FOLDER_LIST_URL, { headers: { 'User-Agent': APP_UA, Accept: 'application/json' } });
+    let j;
+    try { j = JSON.parse(text); } catch (e) { throw new Error('收藏夹返回了异常内容'); }
+    if (j && j.code !== 0) throw new Error(j.msg || '收藏夹读取失败');
+    const d = j.data || {};
+    const folders = (d.folders || []).filter(Boolean).map((f) => ({
+      id: Number(f.id) || 0,
+      name: f.name || '未命名收藏夹',
+      cover: f.coverUrl || '',
+      postCount: Number(f.postCount) || 0,
+      description: f.description || '',
+      isDefault: !!f.isDefault,
+    })).filter((f) => f.id);
+    return { folders, total: folders.reduce((s, f) => s + f.postCount, 0) };
+  }
+
+  async function collectionPosts(folderId, offset) {
+    if (!(await probeLogin())) throw new Error('请先登录 LOFTER');
+    const id = Number(folderId) || 0;
+    if (!id) throw new Error('收藏夹参数不对');
+    const off = Number(offset) || 0;
+    const url = FOLDER_DETAIL_URL + '?folderId=' + id + '&offset=' + off + '&limit=20';
+    const text = await req(url, { headers: { 'User-Agent': APP_UA, Accept: 'application/json' } });
+    let j;
+    try { j = JSON.parse(text); } catch (e) { throw new Error('收藏夹返回了异常内容'); }
+    if (!j || j.code !== 0) throw new Error((j && j.msg) || '收藏夹读取失败');
+    const d = j.data || {};
+    const folder = d.folder ? { id: Number(d.folder.id) || id, name: d.folder.name || '收藏夹', postCount: Number(d.folder.postCount) || 0 } : null;
+    const posts = [];
+    for (const it of d.posts || []) {
+      if (!it) continue;
+      const pd = it.postData || it;
+      const pv = pd.postView || pd;
+      if (!pv || !(pv.id || pv.postId)) continue;
+      const merged = Object.assign({}, pd, pv);
+      if (!merged.blogInfo) merged.blogInfo = pd.blogInfo || it.blogInfo || null;
+      const n = normPost(merged);
+      if (n && n.id) posts.push(n);
+    }
+    const clean = posts.filter((p) => !p.ai && !p.locked);
+    return {
+      posts: clean,
+      folder,
+      nextOffset: clean.length ? off + (d.posts || []).length : -1,
+      hasMore: (d.posts || []).length >= 20,
     };
   }
 
@@ -979,6 +1041,9 @@
     '/api/follow': (p) => followFeed(p.cursor || '0,0,0'),
     '/api/relation': (p) => relationList(p.type, Number(p.offset) || 0),
     '/api/favorites': (p) => favoritePosts(Number(p.offset) || 0),
+    '/api/shares': (p) => sharedPosts(Number(p.offset) || 0),
+    '/api/collections': () => collectionFolders(),
+    '/api/collection-posts': (p) => collectionPosts(p.folderId, Number(p.offset) || 0),
     '/api/like': (p) => likePost(p.blogId, p.postId, p.like === '1'),
     '/api/follow-blog': (p) => followBlog(p.blogId, p.domain, p.follow === '1'),
     '/api/comment-add': (p) => addComment(p.blogId, p.postId, p.content, p.parentId),

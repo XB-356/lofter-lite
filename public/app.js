@@ -1118,16 +1118,23 @@
   }
 
   // ================= 页面：账号收藏 =================
-  async function viewFavorites() {
+  // 账号作品列表：喜欢（红心）/ 推荐（转发出去的作品）
+  const ACCOUNT_LIST_META = {
+    likes: { title: '喜欢', path: '/api/favorites', empty: '账号里还没有喜欢过作品', unit: '件喜欢' },
+    shares: { title: '推荐', path: '/api/shares', empty: '账号里还没有推荐过作品', unit: '件推荐' },
+  };
+
+  async function viewAccountPosts(kind) {
+    const meta = ACCOUNT_LIST_META[kind] || ACCOUNT_LIST_META.likes;
     setTab('me');
     setHeader(`
       <button class="icon-btn" id="btn-back" aria-label="返回">${icon('back')}</button>
-      <div class="h-title">账号收藏</div>
+      <div class="h-title">${meta.title}</div>
       <div class="spacer"></div>
     `);
     $('#btn-back').addEventListener('click', back);
     if (!NATIVE) {
-      viewEl.innerHTML = `<div style="padding:16px">${emptyEl('账号收藏需要先在 App 内登录 LOFTER', false)}</div>`;
+      viewEl.innerHTML = `<div style="padding:16px">${emptyEl('账号的' + meta.title + '需要先在 App 内登录 LOFTER', false)}</div>`;
       return;
     }
     viewEl.innerHTML = `<div class="feed"><div class="masonry" id="masonry"></div><div class="load-more" id="loadmore"></div><div id="sentinel" style="height:1px"></div></div>`;
@@ -1140,14 +1147,14 @@
       if (loading || done || token !== navId) return;
       loading = true;
       try {
-        const d = await api('/api/favorites', { offset });
+        const d = await api(meta.path, { offset });
         if (token !== navId) return;
         $('#masonry').querySelectorAll('.skeleton').forEach((n) => n.remove());
         total = d.count || total;
         const posts = (d.posts || []).filter((p) => !isBlockedPost(p));
         if (!posts.length) {
           done = true;
-          if (!offset) $('#masonry').innerHTML = `<div class="empty"><div class="big">🍃</div><p>账号里还没有收藏</p></div>`;
+          if (!offset) $('#masonry').innerHTML = `<div class="empty"><div class="big">🍃</div><p>${meta.empty}</p></div>`;
         } else {
           for (const p of posts) m.add(cardEl(p));
           bindImages(viewEl);
@@ -1156,12 +1163,122 @@
         if (d.hasMore && d.nextOffset >= 0 && d.nextOffset !== offset) offset = d.nextOffset;
         else done = true;
         const more = $('#loadmore');
-        if (more) more.textContent = done ? (total ? '共 ' + num(total) + ' 件收藏' : '') : '已显示 ' + offset + ' 件 · 继续下拉加载更多';
+        if (more) more.textContent = done ? (total ? '共 ' + num(total) + ' ' + meta.unit : '') : '已显示 ' + offset + ' ' + meta.unit + ' · 继续下拉加载更多';
       } catch (err) {
         if (token !== navId) return;
         $('#masonry').querySelectorAll('.skeleton').forEach((n) => n.remove());
         if (!offset) {
-          viewEl.innerHTML = `<div style="padding:16px">${emptyEl(err.message || '收藏加载失败', true)}</div>`;
+          viewEl.innerHTML = `<div style="padding:16px">${emptyEl(err.message || meta.title + '加载失败', true)}</div>`;
+          viewEl.querySelector('.retry')?.addEventListener('click', () => render());
+        } else {
+          toast(err.message || '加载失败');
+        }
+        done = true;
+      } finally {
+        loading = false;
+      }
+    }
+
+    const io = new IntersectionObserver((en) => { if (en.some((x) => x.isIntersecting)) load(); }, { rootMargin: '700px 0px' });
+    io.observe($('#sentinel'));
+    load();
+  }
+
+  // 收藏夹列表 → 收藏夹内的作品
+  async function viewCollections() {
+    setTab('me');
+    setHeader(`
+      <button class="icon-btn" id="btn-back" aria-label="返回">${icon('back')}</button>
+      <div class="h-title">收藏</div>
+      <div class="spacer"></div>
+    `);
+    $('#btn-back').addEventListener('click', back);
+    if (!NATIVE) {
+      viewEl.innerHTML = `<div style="padding:16px">${emptyEl('账号收藏需要先在 App 内登录 LOFTER', false)}</div>`;
+      return;
+    }
+    viewEl.innerHTML = `<div style="padding:14px 0 30px"><div class="load-more"><span class="spinner"></span>读取收藏夹</div></div>`;
+    const token = navId;
+    let data;
+    try {
+      data = await api('/api/collections');
+    } catch (err) {
+      if (token !== navId) return;
+      viewEl.innerHTML = `<div style="padding:16px">${emptyEl(err.message || '收藏夹读取失败', true)}</div>`;
+      viewEl.querySelector('.retry')?.addEventListener('click', () => render());
+      return;
+    }
+    if (token !== navId) return;
+    const folders = (data.folders || []).filter((f) => f.postCount > 0 || f.isDefault);
+    if (!folders.length) {
+      viewEl.innerHTML = `<div style="padding:16px">${emptyEl('账号里还没有收藏夹', false)}</div>`;
+      return;
+    }
+    viewEl.innerHTML = `
+      <div class="list-card" style="margin-top:14px">
+        ${folders.map((f) => `
+          <a class="list-row fav-folder" href="#/collection/${f.id}">
+            ${f.cover
+              ? `<img class="fav-folder-cover" src="${esc(thumb(f.cover, 200))}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">`
+              : `<span class="fav-folder-cover fav-folder-ph">${icon('bookmark')}</span>`}
+            <div class="fav-folder-main">
+              <div class="fav-folder-name">${esc(f.name)}${f.isDefault ? '<span class="fav-folder-tag">默认</span>' : ''}</div>
+              <div class="fav-folder-sub">${f.postCount} 件作品${f.description ? ' · ' + esc(f.description) : ''}</div>
+            </div>
+            <span class="val">${icon('chevron')}</span>
+          </a>`).join('')}
+      </div>
+      <div class="load-more" style="padding-top:14px">共 ${num(data.total || 0)} 件收藏</div>`;
+  }
+
+  async function viewCollection(folderId) {
+    setTab('me');
+    setHeader(`
+      <button class="icon-btn" id="btn-back" aria-label="返回">${icon('back')}</button>
+      <div class="h-title">收藏夹</div>
+      <div class="spacer"></div>
+    `);
+    $('#btn-back').addEventListener('click', back);
+    if (!NATIVE) {
+      viewEl.innerHTML = `<div style="padding:16px">${emptyEl('账号收藏需要先在 App 内登录 LOFTER', false)}</div>`;
+      return;
+    }
+    viewEl.innerHTML = `<div class="feed"><div class="masonry" id="masonry"></div><div class="load-more" id="loadmore"></div><div id="sentinel" style="height:1px"></div></div>`;
+    const m = new Masonry($('#masonry'), colsFor());
+    appendSkeletons(m, 6);
+    const token = navId;
+    let offset = 0, done = false, loading = false, folder = null;
+
+    async function load() {
+      if (loading || done || token !== navId) return;
+      loading = true;
+      try {
+        const d = await api('/api/collection-posts', { folderId, offset });
+        if (token !== navId) return;
+        $('#masonry').querySelectorAll('.skeleton').forEach((n) => n.remove());
+        if (d.folder && !folder) {
+          folder = d.folder;
+          const title = $('.h-title');
+          if (title) title.textContent = folder.name || '收藏夹';
+        }
+        const posts = (d.posts || []).filter((p) => !isBlockedPost(p));
+        if (!posts.length) {
+          done = true;
+          if (!offset) $('#masonry').innerHTML = `<div class="empty"><div class="big">🔖</div><p>这个收藏夹还是空的</p></div>`;
+        } else {
+          for (const p of posts) m.add(cardEl(p));
+          bindImages(viewEl);
+          currentFeedExtra.push(...posts);
+        }
+        if (d.hasMore && d.nextOffset >= 0 && d.nextOffset !== offset) offset = d.nextOffset;
+        else done = true;
+        const more = $('#loadmore');
+        if (more) more.textContent = done ? (folder && folder.postCount ? '共 ' + num(folder.postCount) + ' 件收藏' : '') : '已显示 ' + offset + ' 件 · 继续下拉加载更多';
+      } catch (err) {
+        if (token !== navId) return;
+        $('#masonry').querySelectorAll('.skeleton').forEach((n) => n.remove());
+        if (!offset) {
+          viewEl.innerHTML = `<div style="padding:16px">${emptyEl(err.message || '收藏夹加载失败', true)}</div>`;
           viewEl.querySelector('.retry')?.addEventListener('click', () => render());
         } else {
           toast(err.message || '加载失败');
@@ -1942,7 +2059,10 @@
     setHeader(`<div class="h-title">我的</div><div class="spacer"></div>`);
     const tags = store.settings.tags;
     const logged = await checkLogin();
-    if (logged && (!store.settings.profile || Date.now() - (store.settings.accountSyncAt || 0) > 5 * 60e3)) {
+    // 老版本缓存下来的 profile 没有 likes/collections/shares 字段，认出来就重新拉一次
+    const staleProfile = !store.settings.profile || !store.settings.profile.counts
+      || store.settings.profile.counts.likes === undefined;
+    if (logged && (staleProfile || Date.now() - (store.settings.accountSyncAt || 0) > 5 * 60e3)) {
       await syncAccount();
     }
     const profile = store.settings.profile;
@@ -1986,12 +2106,16 @@
         ${logged ? `
         <a href="#/relation?type=following"><b>${num(counts.following || 0)}</b><span>关注</span></a>
         <a href="#/relation?type=fans"><b>${num(counts.followers || 0)}</b><span>粉丝</span></a>
-        <a href="#/favorites"><b>${num(counts.favorites || 0)}</b><span>收藏</span></a>` : ''}
+        <a href="#/favorites"><b>${num(counts.likes || 0)}</b><span>喜欢</span></a>
+        <a href="#/collections"><b>${num(counts.collections || 0)}</b><span>收藏</span></a>
+        <a href="#/shares"><b>${num(counts.shares || 0)}</b><span>推荐</span></a>` : `
         <div><b>${store.saved.length}</b><span>本机收藏</span></div>
-        <div><b>${store.history.length}</b><span>浏览</span></div>
+        <div><b>${store.history.length}</b><span>浏览</span></div>`}
       </div>
       <div class="list-card">
-        ${logged ? `<a class="list-row" href="#/favorites">${icon('heart')}账号收藏<span class="val">${num(counts.favorites || 0)} ${icon('chevron')}</span></a>` : ''}
+        ${logged ? `<a class="list-row" href="#/favorites">${icon('heart')}喜欢<span class="val">${num(counts.likes || 0)} ${icon('chevron')}</span></a>` : ''}
+        ${logged ? `<a class="list-row" href="#/collections">${icon('bookmark')}收藏<span class="val">${num(counts.collections || 0)} ${icon('chevron')}</span></a>` : ''}
+        ${logged ? `<a class="list-row" href="#/shares">${icon('share')}推荐作品<span class="val">${num(counts.shares || 0)} ${icon('chevron')}</span></a>` : ''}
         <a class="list-row" href="#/saved">${icon('bookmark')}本机收藏<span class="val">${store.saved.length} ${icon('chevron')}</span></a>
         <a class="list-row" href="#/history">${icon('clock')}浏览历史<span class="val">${store.history.length} ${icon('chevron')}</span></a>
         ${logged ? `<button class="list-row" id="publish-btn">${icon('external')}发布作品<span class="val"></span></button>` : ''}
@@ -2482,7 +2606,10 @@
       if (path === '/muted') return viewMuted();
       if (path === '/blacklist') return viewBlacklist();
       if (path === '/relation') return await viewRelation(q.get('type') === 'fans' ? 'fans' : 'following');
-      if (path === '/favorites') return await viewFavorites();
+      if (path === '/favorites') return await viewAccountPosts('likes');
+      if (path === '/shares') return await viewAccountPosts('shares');
+      if (path === '/collections') return await viewCollections();
+      if (parts[0] === 'collection' && parts[1]) return await viewCollection(Number(parts[1]) || 0);
       if (path === '/about') return viewAbout();
       if (path === '/diag') return viewDiag();
       if (path === '/compose') return viewCompose();
