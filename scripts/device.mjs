@@ -82,12 +82,15 @@ function pickDevice() {
 }
 
 function newestApk() {
-  const found = ['build\\lofter-lite-debug.apk', 'build\\lofter-lite.apk']
-    .map((p) => path.join(ROOT, 'android', p))
-    .filter((p) => fs.existsSync(p));
-  if (found.length === 0) die('没找到 APK，先跑 npm run apk（或 npm run apk -- -Debug）');
-  found.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
-  return found[0];
+  // 默认优先 debug 包：release 包的 WebView 调试是关的，装了也看不到 chrome://inspect
+  const debug = path.join(ROOT, 'android', 'build', 'lofter-lite-debug.apk');
+  const release = path.join(ROOT, 'android', 'build', 'lofter-lite.apk');
+  if (fs.existsSync(debug)) return debug;
+  if (fs.existsSync(release)) {
+    console.log('（没找到 debug 包，退回 release 包；要看 WebView 调试先跑 npm run apk -- -Debug）');
+    return release;
+  }
+  die('没找到 APK，先跑 npm run apk -- -Debug');
 }
 
 const commands = {
