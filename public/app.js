@@ -1375,7 +1375,11 @@
             <button class="act" id="act-share">${icon('share')}<span>分享</span></button>
             <button class="act" id="act-mute">${icon('shield')}<span>屏蔽</span></button>
           </div>
-          <button class="orig-btn" id="orig-open">${icon('external')} 在 LOFTER 打开原文</button>
+          <button class="orig-btn" id="orig-open">
+            <span class="orig-ico">${icon('external')}</span>
+            <span class="orig-txt">在 LOFTER 打开原文</span>
+            <span class="orig-arr">${icon('chevron')}</span>
+          </button>
           <section class="cmt-sec" id="comments">
             <div class="cmt-head"><span class="cmt-title">评论</span><span class="cmt-count">${num(post.stats.comment)}</span></div>
             <div class="cmt-compose"><input class="cmt-input" maxlength="500" placeholder="写评论…"><button class="cmt-send">发送</button></div>

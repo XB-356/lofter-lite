@@ -588,14 +588,22 @@ body.immersive #app { padding-bottom: 0; }
 .post-stats svg { width: 15px; height: 15px; }
 
 .orig-btn {
-  display: flex; align-items: center; justify-content: center; gap: 6px;
-  margin: 18px 0 0;
-  height: 44px; border-radius: 13px;
-  background: var(--accent-weak);
-  color: var(--accent);
-  font-size: 13.5px; font-weight: 650;
+  display: flex; align-items: center; gap: 9px;
+  width: 100%; box-sizing: border-box;
+  margin: 18px 0 0; padding: 0 14px;
+  height: 46px; border-radius: 13px;
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  color: var(--text-2);
+  font-size: 13.5px; font-weight: 600;
+  text-align: left;
 }
-.orig-btn svg { width: 15px; height: 15px; }
+.orig-btn:active { background: var(--line); }
+.orig-btn .orig-ico { display: flex; color: var(--accent); }
+.orig-btn .orig-ico svg { width: 16px; height: 16px; }
+.orig-btn .orig-txt { flex: 1; text-align: left; }
+.orig-btn .orig-arr { display: flex; color: var(--sub); }
+.orig-btn .orig-arr svg { width: 14px; height: 14px; }
 
 .post-end { text-align: center; color: var(--sub); font-size: 11.5px; padding: 22px 0 8px; letter-spacing: 0.3px; }
 
