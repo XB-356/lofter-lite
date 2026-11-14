@@ -223,6 +223,8 @@
     }
     return Object.assign({}, base, {
       tags, ai: tags.some(isAiTag), content, caption, photos, video,
+      // 列表接口可能没带 videoPostView，时长就靠详情里的 embed.duration 兜底
+      dur: (video && video.duration) || base.dur || 0,
       wordCount: post.wordCount || post.totalWordCount || 0,
       ipLocation: post.ipLocation || '',
       // 详情响应里带 user 状态：liked / shared / subscribed（用来把「喜欢」按钮点亮）

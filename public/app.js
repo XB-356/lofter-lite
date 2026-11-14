@@ -280,7 +280,9 @@
 
   function cardEl(post) {
     // 缩略图比例做钳制：特长图（1:5）和横图（5:1）都裁到适合瀑布流的比例
-    const natural = post.coverW && post.coverH ? post.coverW / post.coverH : 0.78;
+    // 视频帖经常拿不到 firstImageWH：按 16:9 横放，别用 0.78 把横屏视频裁成竖条
+    const isVideo = post.type === 3 || post.type === 4 || !!post.dur;
+    const natural = post.coverW && post.coverH ? post.coverW / post.coverH : (isVideo ? 16 / 9 : 0.78);
     const ratio = Math.min(1.9, Math.max(0.62, natural));
     const cover = post.cover ? thumb(post.cover, natural < 0.45 ? 340 : 480) : '';
     const saved = store.isSaved(post.id);
@@ -291,7 +293,8 @@
     const media = cover
       ? `<a class="card-media" href="#/post/${post.author.id}/${post.id}">
            <img src="${esc(cover)}" alt="" loading="lazy" style="aspect-ratio:${ratio.toFixed(4)};object-fit:cover;object-position:center" data-aspect data-shape="${natural > 2 ? 'wide' : natural < 0.55 ? 'tall' : ''}">
-           ${post.type === 3 || post.type === 4 ? `<span class="play"><span>${icon('play')}</span></span>` : ''}
+           ${isVideo ? `<span class="play"><span>${icon('play')}</span></span>` : ''}
+           ${isVideo && post.dur ? `<span class="dur">${fmtDur(post.dur)}</span>` : ''}
          </a>`
       : '';
 
@@ -326,6 +329,50 @@
     if (!s) return '';
     const m = Math.floor(s / 60);
     return m + ':' + String(Math.floor(s % 60)).padStart(2, '0');
+  }
+
+  // 推荐流里的视频帖，列表接口不带时长：只对还没时长的视频卡补一次详情（最多 4 张），拿到就贴角标。
+  // 时长按帖子 id 记在内存里：瀑布流重排会重建卡片，重排后要能立刻贴回角标，不能靠元素本身。
+  const videoDurCache = new Map();
+  const videoDurPending = new Set();
+  function applyVideoDurations() {
+    for (const c of document.querySelectorAll('#masonry .card')) {
+      const media = c.querySelector('.card-media');
+      if (!media || !media.querySelector('.play') || media.querySelector('.dur')) continue;
+      const sec = videoDurCache.get(c.dataset.id);
+      if (!sec) continue;
+      const tag = document.createElement('span');
+      tag.className = 'dur';
+      tag.textContent = fmtDur(sec);
+      media.appendChild(tag);
+    }
+  }
+  async function fillVideoDurations() {
+    if (!nativeApi) return;
+    applyVideoDurations();
+    const cards = [...document.querySelectorAll('#masonry .card')]
+      .filter((c) => {
+        const media = c.querySelector('.card-media');
+        return media && media.querySelector('.play') && !media.querySelector('.dur')
+          && !videoDurCache.has(c.dataset.id) && !videoDurPending.has(c.dataset.id);
+      })
+      .slice(0, 4);
+    for (const c of cards) {
+      const media = c.querySelector('.card-media');
+      const hit = (media.getAttribute('href') || '').match(/#\/post\/([^/]+)\/(\d+)/);
+      if (!hit) continue;
+      videoDurPending.add(c.dataset.id);
+      try {
+        const detail = await api('/api/post', { blogId: hit[1], postId: hit[2] });
+        if (detail && detail.dur) {
+          videoDurCache.set(c.dataset.id, detail.dur);
+          applyVideoDurations();
+        }
+      } catch (e) {
+      } finally {
+        videoDurPending.delete(c.dataset.id);
+      }
+    }
   }
 
   function bigCardEl(post, isRec) {
@@ -657,6 +704,7 @@
       for (const p of cache.posts) m.add(cardEl(p));
       bindImages(viewEl);
       $('#loadmore').innerHTML = cache.done ? '已经到底啦 · 休息一下' : '';
+      setTimeout(fillVideoDurations, 120);
     };
 
     if (cache.posts.length) {
@@ -694,6 +742,7 @@
         if (allowed.length && $('#masonry').querySelector('.skeleton')) m.reset();
         for (const p of allowed) m.add(cardEl(p));
         bindImages(viewEl);
+        setTimeout(fillVideoDurations, 120);
         if ($('#loadmore')) $('#loadmore').innerHTML = cache.done ? '已经到底啦 · 休息一下' : '';
       } catch (err) {
         if (token !== navId) return;
