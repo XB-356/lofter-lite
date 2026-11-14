@@ -140,7 +140,9 @@
     };
   }
   function normPost(entry) {
+    if (!entry) return null;
     let post = entry.post || entry;
+    if (!post || !post.id) return null;
     if (post && post.postView) {
       const outer = post;
       post = Object.assign({}, outer, outer.postView);
@@ -184,8 +186,10 @@
     };
   }
   function normDetail(entry) {
+    if (!entry) return null;
     const post = entry.post || entry;
     const base = normPost(post);
+    if (!base) return null;
     const tags = base.tags;
     const photos = parseArr(post.photoLinks).filter(Boolean).map((p) => ({
       url: p.orign || p.orignWithTag || p.raw || p.middle || p.small || '',
@@ -223,7 +227,7 @@
     const resp = await callApi(TAG_URL, { method: 'newTagSearch', tag, offset: offset || 0, limit: 20, type: sort || 'new' });
     const items = resp.items || [];
     return {
-      posts: items.map(normPost).filter((p) => !p.ai && !p.locked),
+      posts: items.map(normPost).filter(Boolean).filter((p) => !p.ai && !p.locked),
       nextOffset: typeof resp.offset === 'number' ? resp.offset : (offset || 0) + items.length,
       hasMore: items.length > 0,
     };
@@ -237,7 +241,9 @@
       });
       const entry = (resp.posts || [])[0];
       if (!entry) throw new Error('这篇内容暂时不可见（可能已删除、设为私密或受限）');
-      return normDetail(entry);
+      const detail = normDetail(entry);
+      if (!detail) throw new Error('这篇内容暂时不可见（可能已删除、设为私密或受限）');
+      return detail;
     } catch (e) {
       if (/不可见/.test(e.message)) throw e;
       throw new Error('这篇内容暂时不可见（可能已删除、设为私密或受限）');
@@ -286,8 +292,8 @@
       blogdomain: name + '.lofter.com', method: 'getPostLists', limit: limit || 20, offset: offset || 0,
       checkpwd: 1, supportposttypes: POST_TYPES, postdigestnew: 1, needgetpoststat: 1,
     });
-    const posts = (resp.posts || []).map(normPost).filter((p) => !p.ai && !p.locked);
-    const bi = resp.blogInfo || (resp.posts && resp.posts[0] && resp.posts[0].post.blogInfo) || {};
+    const posts = (resp.posts || []).map(normPost).filter(Boolean).filter((p) => !p.ai && !p.locked);
+    const bi = resp.blogInfo || (resp.posts && resp.posts[0] && resp.posts[0].post && resp.posts[0].post.blogInfo) || {};
     return {
       blog: { name: bi.blogName || name, nick: bi.blogNickName || name, avatar: bi.bigAvaImg || '', intro: bi.selfIntro || '', id: bi.blogId || 0, url: 'https://' + name + '.lofter.com' },
       posts,
