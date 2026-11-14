@@ -256,12 +256,6 @@ public class Bridge {
         });
     }
 
-    @JavascriptInterface
-    public void openEditor() {
-        Intent i = new Intent(activity, LoginActivity.class);
-        i.putExtra("url", "https://www.lofter.com/post/create");
-        activity.startActivity(i);
-    }
 
     @JavascriptInterface
     public void openUrl(final String url) {

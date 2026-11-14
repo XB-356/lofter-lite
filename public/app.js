@@ -143,7 +143,7 @@
     settings: Object.assign({
       theme: 'auto', tags: [], reduceMotion: false,
       feedMode: 'recommend', onlyTag: '', blockedTags: [], blockedBlogs: [], mutedBlogs: [],
-      profile: null, subscribedTags: [], accountSyncAt: 0, tagSeen: {}, followRecommend: true, composeDraft: null,
+      profile: null, subscribedTags: [], accountSyncAt: 0, tagSeen: {}, followRecommend: true,
     }, loadLS('settings', {})),
     saved: loadLS('saved', []),
     history: loadLS('history', []),
@@ -2330,7 +2330,6 @@
         ${logged ? `<a class="list-row" href="#/shares">${icon('share')}推荐作品<span class="val">${num(counts.shares || 0)} ${icon('chevron')}</span></a>` : ''}
         <a class="list-row" href="#/saved">${icon('bookmark')}本机收藏<span class="val">${store.saved.length} ${icon('chevron')}</span></a>
         <a class="list-row" href="#/history">${icon('clock')}浏览历史<span class="val">${store.history.length} ${icon('chevron')}</span></a>
-        ${logged ? `<button class="list-row" id="publish-btn">${icon('external')}发布作品<span class="val"></span></button>` : ''}
       </div>
       <div class="list-card">
         <a class="list-row" href="#/tags">${icon('tag')}兴趣标签<span class="val">${tags.length ? esc(tags.slice(0, 3).join(' · ')) : '使用默认推荐'} ${icon('chevron')}</span></a>
@@ -2362,7 +2361,6 @@
       if (confirm('退出 LOFTER 登录？')) nativeApi.logout();
     });
     $('#acc-btn')?.addEventListener('click', () => { if (nativeApi) nativeApi.login(); });
-    $('#publish-btn')?.addEventListener('click', () => { location.hash = '#/compose'; });
     $('#theme-row').addEventListener('click', openThemeSheet);
     $('#clear-cache').addEventListener('click', () => {
       if (!confirm('清除本机的收藏、历史与兴趣设置？')) return;
@@ -2725,50 +2723,6 @@
     run();
   }
 
-  // ================= 页面：发布编辑器 =================
-  function viewCompose() {
-    setTab(null);
-    setHeader(`<button class="icon-btn" id="btn-back" aria-label="返回">${icon('back')}</button>
-      <div class="h-title">发布作品</div><div class="spacer"></div>`);
-    $('#btn-back').addEventListener('click', back);
-    const d = store.settings.composeDraft || {};
-    viewEl.innerHTML = `<div class="compose">
-      <input id="cp-title" maxlength="80" placeholder="标题（可选）" value="${esc(d.title || '')}">
-      <textarea id="cp-body" placeholder="写点什么…">${esc(d.body || '')}</textarea>
-      <input id="cp-tags" maxlength="120" placeholder="标签，用逗号分隔" value="${esc(d.tags || '')}">
-      <div class="cp-actions">
-        <button id="cp-draft">存草稿</button>
-        <button id="cp-publish" class="primary">打开发布页</button>
-      </div>
-      <p class="cp-tip">先在这里编辑，草稿保存在本机。LOFTER 未开放第三方发布接口，「打开发布页」会复制全文并打开官方编辑器，粘贴即可发布。</p>
-    </div>`;
-    const collect = () => ({
-      title: $('#cp-title').value.trim(),
-      body: $('#cp-body').value.trim(),
-      tags: $('#cp-tags').value.trim(),
-    });
-    $('#cp-draft').addEventListener('click', () => {
-      store.settings.composeDraft = collect();
-      store.saveSettings();
-      toast('草稿已保存');
-    });
-    $('#cp-publish').addEventListener('click', () => {
-      const c = collect();
-      const text = [c.title, c.body, c.tags ? c.tags.split(/[,，\s]+/).map((t) => '#' + t).join(' ') : '']
-        .filter(Boolean).join('\n\n');
-      if (!text) { toast('先写点内容'); return; }
-      store.settings.composeDraft = c;
-      store.saveSettings();
-      if (nativeApi) {
-        if (nativeApi.copy) nativeApi.copy(text);
-        if (nativeApi.openEditor) nativeApi.openEditor();
-        toast('已复制，粘贴到编辑器即可');
-      } else {
-        toast('请在 APK 内发布');
-      }
-    });
-  }
-
   // ================= 页面：关于 =================
   function viewAbout() {
     setTab(null);
@@ -2825,7 +2779,6 @@
       if (parts[0] === 'collection' && parts[1]) return await viewCollection(Number(parts[1]) || 0);
       if (path === '/about') return viewAbout();
       if (path === '/diag') return viewDiag();
-      if (path === '/compose') return viewCompose();
       if (parts[0] === 'tag' && parts[1]) return await viewTag(parts[1], q.get('sort') === 'hot' ? 'hot' : 'new');
       if (parts[0] === 'blog' && parts[1]) return await viewBlog(parts[1]);
       if (parts[0] === 'post' && parts[1] && parts[2]) return await viewPost(parts[1], parts[2]);

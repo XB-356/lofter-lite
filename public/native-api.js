@@ -1110,7 +1110,6 @@
       return Promise.resolve().then(() => fn(params || {}));
     },
     login: function () { N.login(); },
-    openEditor: function () { if (N.openEditor) N.openEditor(); },
     copy: function (text) { if (N.copy) N.copy(String(text)); },
     switchAccount: function () {
       if (N.relogin) N.relogin();
