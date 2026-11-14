@@ -1559,8 +1559,14 @@
           const box = document.getElementById('cmt-' + cid);
           const list = box && box.querySelector('.cmt-replies');
           if (list) {
+            // 面板里已经渲染过前两条回复，这里按 id 去重，否则展开「全部回复」会把前两条又插一遍
+            const shown = new Set([...list.querySelectorAll('.cmt')].map((n) => n.id));
             more.remove();
-            list.insertAdjacentHTML('beforeend', (d.list || []).map((r) => commentEl(r, cid)).join(''));
+            const html = (d.list || [])
+              .filter((r) => !shown.has('cmt-' + r.id))
+              .map((r) => commentEl(r, cid))
+              .join('');
+            list.insertAdjacentHTML('beforeend', html);
           }
         } catch (err) {
           more.disabled = false; more.textContent = err.message || '加载失败';
