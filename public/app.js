@@ -1693,7 +1693,7 @@
         const row = raw[tag];
         if (!row || !Array.isArray(row.covers) || !row.covers.length) return;
         tagCardCache.set(tag + '|' + (row.seenAt || 0), {
-          v: { covers: row.covers.slice(0, 3), updates: row.updates || 0, sampled: row.sampled || 0 },
+          v: { covers: row.covers.slice(0, 3), updates: row.updates || 0, sampled: row.sampled || 0, top: row.top || null },
           exp: now + TAG_CARD_TTL,
         });
       });
@@ -1708,7 +1708,7 @@
         if (!hit || !hit.v) return;
         const tag = key.slice(0, key.lastIndexOf('|'));
         const seenAt = Number(key.slice(key.lastIndexOf('|') + 1)) || 0;
-        out[tag] = { covers: (hit.v.covers || []).slice(0, 3), updates: hit.v.updates || 0, sampled: hit.v.sampled || 0, seenAt };
+        out[tag] = { covers: (hit.v.covers || []).slice(0, 3), updates: hit.v.updates || 0, sampled: hit.v.sampled || 0, top: hit.v.top || null, seenAt };
       });
       try { localStorage.setItem(TAG_CARD_KEY, JSON.stringify(out)); } catch (e) {}
     }, 500);
@@ -1974,18 +1974,76 @@
     if (posts.filter((p) => p.cover).length < 3) await pull('new');
     if (posts.filter((p) => p.cover).length < 3) await pull('hot');
     const allowed = posts.filter((p) => !isBlockedPost(p));
-    const covers = [];
-    for (const p of allowed) {
-      if (p.cover && covers.length < 3) covers.push(p.cover);
+    const withCover = allowed.filter((p) => p.cover);
+    let covers = withCover.slice(0, 3).map((p) => p.cover);
+    // 纯文字标签（比如「原创文学」）列表里一张封面都没有，退回话题页头图，别留个空卡
+    if (!covers.length) {
+      try {
+        const info = await api('/api/taginfo', { name: tag });
+        if (info && info.cover) covers = [info.cover];
+      } catch (e) {}
     }
     const since = seenAt || (Date.now() - 7 * 86400000);
     const updates = allowed.filter((p) => (p.time || 0) > since).length;
-    const v = { covers, updates, sampled: allowed.length };
+    const topPost = withCover[0] || allowed[0] || null;
+    const v = {
+      covers,
+      updates,
+      sampled: allowed.length,
+      top: topPost ? {
+        title: topPost.title || '',
+        digest: topPost.digest || '',
+        time: topPost.time || 0,
+        cover: topPost.cover || '',
+        coverW: topPost.coverW || 0,
+        coverH: topPost.coverH || 0,
+      } : null,
+    };
     tagCardCache.set(key, { v, exp: Date.now() + TAG_CARD_TTL });
     persistTagCards();
     return v;
   }
 
+  function tagHue(tag) {
+    let h = 0;
+    for (let i = 0; i < tag.length; i++) h = (h * 31 + tag.charCodeAt(i)) % 360;
+    return h;
+  }
+
+  function tagSubText(v) {
+    if (!v) return '正在读取…';
+    const top = v.top || {};
+    const label = top.title || top.digest || '';
+    const bits = [];
+    if (label) bits.push(label);
+    if (v.sampled) bits.push(v.sampled + ' 件作品');
+    return bits.join(' · ') || '这个标签下还没有作品';
+  }
+
+  function fillTagCard(el, v) {
+    const badge = el.querySelector('.tag-badge');
+    if (badge) {
+      badge.textContent = v && v.updates > 0 ? (v.updates >= 12 ? '12+' : v.updates) + ' 更新' : '暂无更新';
+      badge.classList.toggle('has', !!(v && v.updates > 0));
+      badge.classList.toggle('zero', !(v && v.updates > 0));
+    }
+    const sub = el.querySelector('.tag-big-sub');
+    if (sub) sub.textContent = tagSubText(v);
+    const strip = el.querySelector('.tag-thumbs');
+    if (!strip) return;
+    const hue = tagHue(el.dataset.tag);
+    const covers = ((v && v.covers) || []).filter(Boolean).slice(0, 3);
+    const slots = [0, 1, 2].map((i) => {
+      if (covers[i]) {
+        return `<span class="tag-thumb"><img src="${esc(thumb(covers[i], 320))}" alt="" loading="lazy" onerror="this.parentNode.classList.add('empty');this.remove()"></span>`;
+      }
+      // 纯文字标签（没有任何配图）用同色系占位块，别留三个白洞
+      return `<span class="tag-thumb empty" style="--h:${hue}"><b>#</b></span>`;
+    }).join('');
+    strip.innerHTML = slots;
+  }
+
+  // 大卡片 + 滚到眼前才拉数据（和关注流一样的节奏），冷启动先用缓存里的图铺满
   async function renderTagGrid() {
     const body = $('#follow-body');
     let tags = store.settings.subscribedTags || [];
@@ -1999,55 +2057,60 @@
       return;
     }
 
-    const seenMapAll = store.settings.tagSeen || {};
-    body.innerHTML = `<div class="tag-grid-head">共 ${tags.length} 个订阅标签</div>
-      <div class="tag-list">${tags.map((t) => {
-        const cached = tagCardCache.get(t + '|' + (seenMapAll[t] || 0));
-        const covers = cached && cached.exp > Date.now() ? cached.v.covers : [];
-        return `
-        <a class="tag-row" data-tag="${esc(t)}" href="#/tag/${encodeURIComponent(t)}">
-          <div class="tag-row-head"><b>#${esc(t)}</b><span class="tag-badge">…</span></div>
-          <div class="tag-thumbs">
-            ${[0, 1, 2].map((i) => covers[i]
-              ? `<span class="tag-thumb"><img src="${esc(thumb(covers[i], 240))}" alt="" loading="lazy" onerror="this.remove()"></span>`
-              : '<span class="tag-thumb loading"></span>').join('')}
-          </div>
-        </a>`;
-      }).join('')}</div>`;
-
-    const rows = new Map([...body.querySelectorAll('.tag-row')].map((el) => [el.dataset.tag, el]));
     const seenMap = store.settings.tagSeen || {};
-    const token = navId;
-    let idx = 0;
+    body.innerHTML = `<div class="tag-grid-head">共 ${tags.length} 个订阅标签</div>
+      <div class="tag-list">${tags.map((t) => `
+        <article class="tag-big" data-tag="${esc(t)}">
+          <a class="tag-big-link" href="#/tag/${encodeURIComponent(t)}">
+            <div class="tag-big-head">
+              <b>#${esc(t)}</b>
+              <span class="tag-badge">…</span>
+            </div>
+            <p class="tag-big-sub">正在读取…</p>
+            <div class="tag-thumbs">
+              ${[0, 1, 2].map(() => `<span class="tag-thumb empty" style="--h:${tagHue(t)}"><b>#</b></span>`).join('')}
+            </div>
+          </a>
+        </article>`).join('')}</div>`;
 
-    async function worker() {
-      while (idx < tags.length) {
-        const tag = tags[idx++];
-        const meta = await fetchTagCard(tag, seenMap[tag]);
-        if (token !== navId) return;
-        const el = rows.get(tag);
-        if (!el) continue;
-        const thumbs = el.querySelectorAll('.tag-thumb');
-        meta.covers.forEach((c, i) => {
-          if (thumbs[i]) {
-            thumbs[i].classList.remove('loading');
-            thumbs[i].innerHTML = `<img src="${esc(thumb(c, 240))}" alt="" loading="lazy" onerror="this.remove()">`;
-          }
-        });
-        thumbs.forEach((th) => {
-          if (!th.querySelector('img')) th.classList.remove('loading');
-        });
-        const badge = el.querySelector('.tag-badge');
-        if (meta.updates > 0) {
-          badge.textContent = (meta.updates >= 12 ? '12+' : meta.updates) + ' 更新';
-          badge.classList.add('has');
-        } else {
-          badge.textContent = '暂无更新';
-          badge.classList.add('zero');
-        }
+    const cards = [...body.querySelectorAll('.tag-big')];
+    const token = navId;
+
+    // 先用缓存同步铺一遍，避免首屏全是占位
+    cards.forEach((el) => {
+      const hit = tagCardCache.get(el.dataset.tag + '|' + (seenMap[el.dataset.tag] || 0));
+      if (hit && hit.exp > Date.now()) fillTagCard(el, hit.v);
+    });
+
+    const queue = [];
+    let running = 0;
+    const MAX = 3;
+    const pump = () => {
+      while (running < MAX && queue.length) {
+        const el = queue.shift();
+        running++;
+        const tag = el.dataset.tag;
+        fetchTagCard(tag, seenMap[tag])
+          .then((meta) => { if (token === navId) fillTagCard(el, meta); })
+          .catch(() => {})
+          .then(() => { running--; pump(); });
       }
+    };
+
+    if (!('IntersectionObserver' in window)) {
+      queue.push(...cards);
+      pump();
+      return;
     }
-    await Promise.all([worker(), worker(), worker(), worker()]);
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((en) => {
+        if (!en.isIntersecting) return;
+        io.unobserve(en.target);
+        queue.push(en.target);
+      });
+      pump();
+    }, { rootMargin: '700px 0px' });
+    cards.forEach((el) => io.observe(el));
   }
 
   // ================= 页面：搜索 =================

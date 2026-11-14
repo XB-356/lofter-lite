@@ -926,40 +926,10 @@ body.immersive #app { padding-bottom: 0; }
 }
 .user-row > svg { width: 15px; height: 15px; color: var(--sub); flex: none; }
 
-/* ============ 订阅标签网格 ============ */
-.tag-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  padding: 12px 14px 34px;
-}
-.tag-card {
-  background: var(--card);
-  border-radius: 14px;
-  overflow: hidden;
-  box-shadow: var(--shadow);
-}
-.tag-cover {
-  position: relative;
-  aspect-ratio: 1.2;
-  background: var(--bg-soft);
-  overflow: hidden;
-}
-.tag-cover img {
-  width: 100%; height: 100%;
-  object-fit: cover;
-  display: block;
-}
-.tag-ph {
-  display: block;
-  width: 100%; height: 100%;
-  background: linear-gradient(100deg, var(--bg-soft) 30%, color-mix(in srgb, var(--bg-soft) 55%, var(--card)) 50%, var(--bg-soft) 70%);
-  background-size: 200% 100%;
-  animation: shimmer 1.4s infinite linear;
-}
+/* ============ 订阅标签 ============ */
 .tag-badge {
   position: absolute;
-  right: 8px; bottom: 8px;
+  right: 10px; bottom: 10px;
   font-size: 10.5px;
   padding: 2px 8px;
   border-radius: 20px;
@@ -969,14 +939,6 @@ body.immersive #app { padding-bottom: 0; }
 }
 .tag-badge.has { background: var(--accent); }
 .tag-badge.zero { background: rgba(0, 0, 0, 0.32); color: rgba(255,255,255,0.85); }
-.tag-name {
-  padding: 9px 11px;
-  font-size: 13px;
-  font-weight: 650;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 
 .profile-error {
   display: flex;
@@ -1139,50 +1101,43 @@ body.immersive #app { padding-bottom: 0; }
 .switch.on { background: var(--accent); }
 .switch.on::after { left: 19px; }
 
-/* ============ 订阅标签：单列三图 ============ */
+/* ============ 订阅标签：大卡片（三张缩略图，滚到眼前才拉图） ============ */
 .tag-list {
   display: flex; flex-direction: column; gap: 12px;
-  padding: 4px 14px 30px;
+  padding: 6px 14px 34px;
 }
-.tag-row {
-  display: block;
+.tag-big {
   background: var(--card);
-  border-radius: 14px;
-  padding: 12px;
+  border-radius: 16px;
   box-shadow: var(--shadow);
+  overflow: hidden;
 }
-.tag-row-head { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; }
-.tag-row-head b {
-  flex: 1; font-size: 14px; font-weight: 700;
+.tag-big-link { display: block; padding: 12px 13px 13px; }
+.tag-big-head { display: flex; align-items: center; gap: 8px; }
+.tag-big-head b {
+  flex: 1; min-width: 0; font-size: 15px; font-weight: 700;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.tag-row-head .tag-badge {
-  position: static;
-  background: var(--bg-soft);
-  color: var(--sub);
-  padding: 2px 8px;
+.tag-big .tag-badge { position: static; background: var(--bg-soft); color: var(--sub); }
+.tag-big .tag-badge.has { background: var(--accent-weak); color: var(--accent); }
+.tag-big .tag-badge.zero { background: transparent; color: var(--sub); }
+.tag-big-sub {
+  margin: 6px 0 10px; font-size: 12px; color: var(--sub); line-height: 1.5;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.tag-row-head .tag-badge.has { background: var(--accent-weak); color: var(--accent); }
-.tag-row-head .tag-badge.zero { background: transparent; color: var(--sub); }
 .tag-thumbs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .tag-thumb {
-  aspect-ratio: 1;
-  border-radius: 8px;
+  aspect-ratio: 1.35;
+  border-radius: 10px;
   background: var(--bg-soft);
   overflow: hidden;
 }
 .tag-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.tag-thumb.loading { position: relative; overflow: hidden; }
-.tag-thumb.loading::after {
-  content: '';
-  position: absolute; inset: 0;
-  background: linear-gradient(100deg, transparent 20%, rgba(255,255,255,0.35) 50%, transparent 80%);
-  animation: tagShimmer 1.2s ease-in-out infinite;
+.tag-thumb.empty {
+  display: grid; place-items: center;
+  background: linear-gradient(135deg, hsl(var(--h, 210), 46%, 68%), hsl(calc(var(--h, 210) + 38), 50%, 54%));
 }
-@keyframes tagShimmer {
-  from { transform: translateX(-100%); }
-  to { transform: translateX(100%); }
-}
+.tag-thumb.empty b { color: rgba(255, 255, 255, 0.85); font-size: 20px; font-weight: 800; }
 
 .big-thumb-strip {
   display: flex;
