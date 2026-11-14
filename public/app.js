@@ -275,6 +275,9 @@
     }
   }
 
+  // 长按弹出「不想看这条？」后短时间内不要再触发卡片点击跳转
+  let suppressTapUntil = 0;
+
   function cardEl(post) {
     // 缩略图比例做钳制：特长图（1:5）和横图（5:1）都裁到适合瀑布流的比例
     const natural = post.coverW && post.coverH ? post.coverW / post.coverH : 0.78;
@@ -309,13 +312,27 @@
         </div>
       </div>
       <button class="card-save ${saved ? 'on' : ''}" data-save="${post.id}" aria-label="收藏">${icon(saved ? 'bookmarkFill' : 'bookmark')}</button>`;
+    // 整张卡片都能点进详情（封面外的标题/正文/标签/作者栏都算），收藏按钮和链接除外
+    el.addEventListener('click', (e) => {
+      if (Date.now() < suppressTapUntil) return;
+      if (e.target.closest('a, button')) return;
+      location.hash = `#/post/${post.author.id}/${post.id}`;
+    });
     return el;
+  }
+
+  function fmtDur(sec) {
+    const s = Number(sec) || 0;
+    if (!s) return '';
+    const m = Math.floor(s / 60);
+    return m + ':' + String(Math.floor(s % 60)).padStart(2, '0');
   }
 
   function bigCardEl(post, isRec) {
     const natural = post.coverW && post.coverH ? post.coverW / post.coverH : 0.78;
     const ratio = Math.min(1.8, Math.max(0.7, natural));
     const cover = post.cover ? thumb(post.cover, 780) : '';
+    const isVideo = post.type === 3 || post.type === 4 || !!post.dur;
     const el = document.createElement('article');
     el.className = 'big-card';
     el.innerHTML = `
@@ -325,9 +342,11 @@
           </a>`
         : cover ? `<a class="big-cover" href="#/post/${post.originBlogId || post.author.id}/${post.id}">
             <img src="${esc(cover)}" style="aspect-ratio:${ratio.toFixed(3)}" loading="lazy" data-aspect>
+            ${isVideo ? `<span class="play"><span>${icon('play')}</span></span>` : ''}
+            ${post.dur ? `<span class="dur">${fmtDur(post.dur)}</span>` : ''}
           </a>` : ''}
-      ${post.photoCount > 1 ? `<span class="multi-badge">${post.photoCount} 图</span>` : ''}
-      ${post.rec || isRec ? '<span class="rec-badge">推荐</span>' : ''}
+      ${post.photoCount > 1 && !isVideo ? `<span class="multi-badge">${post.photoCount} 图</span>` : ''}
+      ${post.rec || isRec ? `<span class="rec-badge">${post.recBy ? esc(post.recBy) + ' 推荐' : '推荐'}</span>` : ''}
       <div class="big-body">
         ${post.title ? `<h3 class="big-title">${esc(post.title)}</h3>` : ''}
         ${post.digest ? `<p class="big-text">${esc(post.digest)}</p>` : ''}
@@ -808,6 +827,7 @@
     clearTimeout(pressTimer);
     pressTimer = setTimeout(() => {
       if (pressMoved) return;
+      suppressTapUntil = Date.now() + 800;
       if (navigator.vibrate) { try { navigator.vibrate(12); } catch (err) {} }
       if (chip) {
         confirmBlock(chip.dataset.tagBlock);
@@ -823,6 +843,7 @@
     const card = e.target.closest('.card');
     if (!card) return;
     e.preventDefault();
+    suppressTapUntil = Date.now() + 800;
     const p = findPost(card.dataset.id);
     if (p) openBlockSheet(p);
   });
