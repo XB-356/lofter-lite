@@ -72,7 +72,8 @@ test/                node:test：server(HTTP) / lofter(归一化) / cache / live
 
 ## 已知坑
 
-- 上游列表里偶尔混入 `null`（下架 / 风控 / 分页边界），`normalizePost` 已做空值保护，`map` 之后必须 `filter(Boolean)`，别再退回去。
+- 上游列表里偶尔混入 `null`（下架 / 风控 / 分页边界），`normalizePost` 已做空值保护，`map` 之后必须 `filter(Boolean)`，别再退回去。**APK 里还有一份独立的归一化实现 `public/native-api.js`（`normPost` / `normDetail`），改解析逻辑要两边都改**，2026-11 真机就是在这里漏了空值保护，发现流直接报 `Cannot read properties of null`。
+- APK 判登录态看 cookie：登录后实际的 cookie 名是 **`LOFTER_SESS`**（不是 `LOFTER_SESSION`），并且 `api.lofter.com` 和 `www.lofter.com` 两个域都写了登录 cookie。`Bridge.isLoggedIn()` 必须两个域、多个候选名都查，否则会出现「cookie 有会话、/api/me 能取到用户，但界面显示未登录」。
 - 视频帖的 `embed` 是 JSON 字符串，里面才有 mp4 地址。
 - 图片链接要经过前端 `thumb()` 追加 `imageView&thumbnail=` 参数；mock 占位图忽略这些参数。
 - Windows 上不要用 PowerShell `Start-Process` 起服务（本机环境变量里 `NO_PROXY`/`no_proxy` 重复会让它报错），用 `npm run dev` 或后台 job。同一个坑对 .NET Framework 的 `ProcessStartInfo.EnvironmentVariables` 也生效：一访问就抛 `ArgumentException`（已添加项。字典中的关键字:NO_PROXY），所以桌面启动器改用 `cmd /c set PORT=…&&set HOST=…&&"node.exe" server.js` 起服务，别改回去。cmd 套一层后要 `taskkill /PID <pid> /T /F` 整棵树收尸，只 Kill 父进程会留孤儿进程占着端口。
