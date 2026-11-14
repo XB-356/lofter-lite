@@ -83,23 +83,57 @@ scripts/dev.mjs       开发启动器（--mock / --lan / --port / --open / --no-
 scripts/check.mjs     零依赖自检
 scripts/cache-clear.mjs
 scripts/desktop.mjs   桌面启动器入口（必要时先编译 exe，再打开窗口）
+scripts/device.mjs    真机联调：装 APK / 看日志 / 截屏 / 检查可调试 WebView
 desktop/src/Launcher.cs  WinForms 启动器源码（C# 5，零依赖）
 desktop/build.ps1     用系统 csc.exe 编译 exe
+android/build.ps1     Windows 下打 APK（aapt/javac/d8/zipalign/apksigner，不装 Studio）
 test/                 node:test 测试（server / lofter / cache / live）
 ```
 
 ## 构建 APK
 
-需要 JDK、Android SDK（platform 23、build-tools 29.0.3）以及 `android/tools/r8.jar`。
+需要 JDK 17+ 和 Android SDK 的三个最小件（不需要 Android Studio，总共约 130MB）：
 
-```bash
-cd android
-./build.sh
+```
+<SDK>\platform-tools\                     adb（真机调试也要用）
+<SDK>\build-tools\29.0.3\                 aapt / zipalign / apksigner / lib\d8.jar
+<SDK>\platforms\android-23\android.jar
 ```
 
-产物：`android/build/lofter-lite.apk`。
+直链下载（解压到 `D:\Android\sdk` 即可，或设置 `ANDROID_HOME` 指向别处）：
 
-签名使用本地 keystore，不包含在仓库中。
+```text
+https://dl.google.com/android/repository/platform-tools-latest-windows.zip
+https://dl.google.com/android/repository/build-tools_r29.0.3-windows.zip
+https://dl.google.com/android/repository/platform-23_r03.zip
+```
+
+打包（任选其一）：
+
+```bash
+npm run apk                      # 正式包，产物 android/build/lofter-lite.apk
+npm run apk -- -Debug            # 调试包，产物 android/build/lofter-lite-debug.apk
+```
+
+`-Debug` 会在 manifest 写 `android:debuggable=true`，并让 `MainActivity` 打开 `WebView.setWebContentsDebuggingEnabled(true)`，这样才能用电脑 Chrome 的 `chrome://inspect` 调试 APK 里的页面。正式包不带这些。
+
+签名用 `android/lofter.jks`（首次自动生成，已 gitignore），不包含在仓库中。
+
+## 真机联调（在电脑上操作/调试手机）
+
+```bash
+npm run device -- status      # 设备型号、系统版本、是否已装 App、本地 APK 时间
+npm run device -- install     # 装最新的 debug 包
+npm run device -- webviews    # 看 WebView 是否可远程调试
+npm run device -- inspect     # 打开 Chrome 的 chrome://inspect
+npm run device -- logcat      # 只看页面控制台/WebView/崩溃日志
+npm run device -- shot        # 手机截屏到 dev-shots/
+npm run device -- connect 192.168.1.23:5555   # 无线调试
+```
+
+手机端前置条件：开发者选项 → USB 调试；vivo 机型装 APK 需要登录 vivo 帐号后打开「USB 调试（安全设置）」，否则会报 `INSTALL_FAILED_USER_RESTRICTED`（可用 `adb push` 到手机手动安装绕过）。
+
+想只调网页、不碰 APK：`npm run dev:mock -- --lan` 后手机浏览器打开局域网地址即可，前端改动不用重新打包。
 
 ## 说明
 

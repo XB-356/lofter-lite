@@ -23,6 +23,9 @@ npm run verify         # check + test
 npm run cache:clear    # 清 data/cache 与 data/cache-mock
 npm run desktop        # 打开 Windows 桌面启动器（不存在会先编译）
 npm run desktop:test   # 桌面启动器无界面自检
+npm run apk            # 打 APK（Windows，手工最小 SDK 件，见下）
+npm run apk -- -Debug  # 打调试包：debuggable + WebView 远程调试
+npm run device -- status|install|webviews|inspect|logcat|shot|connect
 ```
 
 提交前至少跑 `npm run verify`。涉及上游解析的改动，再跑一次 `npm run test:live`。
@@ -41,6 +44,8 @@ public/native-api.js APK 专用（Web bridge），网页版不生效
 scripts/             启动器 / 自检 / 清缓存
 desktop/src/Launcher.cs  Windows 桌面启动器（WinForms，C# 5，零依赖）
 desktop/build.ps1    用系统自带 csc.exe 编译 exe（不需要 .NET SDK）
+android/build.ps1    Windows 打 APK：aapt → javac → d8 → zipalign → apksigner
+scripts/device.mjs   真机联调：adb 装包 / 日志 / 截屏 / 检查可调试 WebView
 test/                node:test：server(HTTP) / lofter(归一化) / cache / live
 ```
 
@@ -55,7 +60,8 @@ test/                node:test：server(HTTP) / lofter(归一化) / cache / live
 - 测试必须离线、随机端口、独立临时缓存目录（`test/helpers.js` 已封装），不要连线上游。
 - 每次改动单独一个 commit（一个 commit 一件事），**推送要等用户确认**，不要自作主张 push。
 - `desktop/` 是 C#：只能写 **C# 5** 语法（系统自带 csc.exe 是 .NET Framework 4.x 的旧编译器），不要用字符串内插、`?.`、`nameof`、`=>` 表达式体成员等新语法。
-- `desktop/src/Launcher.cs`、`desktop/build.ps1` 这类含中文的 `.cs` / `.ps1` **必须存成 UTF-8 with BOM**：csc 与 Windows PowerShell 5.1 默认按 ANSI(GBK) 读源码，没 BOM 会乱码甚至语法错误。
+- `desktop/src/Launcher.cs`、`desktop/build.ps1` 这类含中文的 `.cs` / `.ps1` **必须存成 UTF-8 with BOM**：csc 与 Windows PowerShell 5.1 默认按 ANSI(GBK) 读源码，没 BOM 会乱码甚至语法错误。同理，**不要用 `Get-Content`/`Set-Content` 改含中文的文件**（PS 5.1 默认按 GBK 解码，会把 UTF-8 中文写坏），要用 `[IO.File]::ReadAllText($p,[Text.UTF8Encoding]::new($false))` + `WriteAllText`。
+- APK 的 WebView 调试只在 debug 包生效：`aapt --debug-mode` 写 `debuggable=true` + `MainActivity` 里按 `FLAG_DEBUGGABLE` 调 `setWebContentsDebuggingEnabled(true)`。release 包不要带这些。
 
 ## 不要做
 
@@ -70,4 +76,7 @@ test/                node:test：server(HTTP) / lofter(归一化) / cache / live
 - 视频帖的 `embed` 是 JSON 字符串，里面才有 mp4 地址。
 - 图片链接要经过前端 `thumb()` 追加 `imageView&thumbnail=` 参数；mock 占位图忽略这些参数。
 - Windows 上不要用 PowerShell `Start-Process` 起服务（本机环境变量里 `NO_PROXY`/`no_proxy` 重复会让它报错），用 `npm run dev` 或后台 job。同一个坑对 .NET Framework 的 `ProcessStartInfo.EnvironmentVariables` 也生效：一访问就抛 `ArgumentException`（已添加项。字典中的关键字:NO_PROXY），所以桌面启动器改用 `cmd /c set PORT=…&&set HOST=…&&"node.exe" server.js` 起服务，别改回去。cmd 套一层后要 `taskkill /PID <pid> /T /F` 整棵树收尸，只 Kill 父进程会留孤儿进程占着端口。
+- **`build-tools\*\apksigner.bat` / `d8.bat` 在只装了最小 SDK 件时会静默失败**：它们靠 `tools\lib\find_java.bat` 找 java，没有就 `goto :EOF` 直接退出且退出码 0。所以 `android/build.ps1` 直接 `java -jar lib\apksigner.jar` / `java -cp lib\d8.jar com.android.tools.r8.D8`，不要改回调 bat。
+- JDK 的 `javapath` 只有 java/javac，没有 `keytool`：`android/build.ps1` 会自己找 JDK 主目录（JAVA_HOME 或 `C:\Program Files\Java\jdk-*`）。
+- 真机装包报 `INSTALL_FAILED_USER_RESTRICTED` 是 vivo 的「USB 调试（安全设置）」没开（要登录 vivo 帐号）；绕开办法是 `adb push` 到 `/sdcard/Download/` 后手机上手动安装。
 - 请求日志会打印所有非 `/api/` 路径；接口出错打印 `[api]` 行带状态码和耗时，排障先看它。
