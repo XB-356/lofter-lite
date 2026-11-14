@@ -385,14 +385,14 @@
     el.innerHTML = `
       ${(post.thumbs && post.thumbs.length >= 2)
         ? `<a class="big-thumb-strip" href="#/post/${post.originBlogId || post.author.id}/${post.id}">
-            ${post.thumbs.slice(0, 6).map((src) => `<img src="${esc(thumb(src, 320))}" alt="" loading="lazy" data-aspect>`).join('')}
+            ${post.thumbs.slice(0, 3).map((src, i) => `<span class="thumb-wrap"><img src="${esc(thumb(src, 320))}" alt="" loading="lazy" data-aspect>${i === 2 && post.photoCount > 3 ? `<b class="thumb-more">+${post.photoCount - 3}</b>` : ''}</span>`).join('')}
           </a>`
         : cover ? `<a class="big-cover" href="#/post/${post.originBlogId || post.author.id}/${post.id}">
             <img src="${esc(cover)}" style="aspect-ratio:${ratio.toFixed(3)}" loading="lazy" data-aspect>
             ${isVideo ? `<span class="play"><span>${icon('play')}</span></span>` : ''}
             ${post.dur ? `<span class="dur">${fmtDur(post.dur)}</span>` : ''}
           </a>` : ''}
-      ${post.photoCount > 1 && !isVideo ? `<span class="multi-badge">${post.photoCount} 图</span>` : ''}
+      ${post.photoCount > 1 && !isVideo && !(post.thumbs && post.thumbs.length >= 2) ? `<span class="multi-badge">${post.photoCount} 图</span>` : ''}
       ${post.rec || isRec ? `<span class="rec-badge">${post.recBy ? esc(post.recBy) + ' 推荐' : '推荐'}</span>` : ''}
       <div class="big-body">
         ${post.title ? `<h3 class="big-title">${esc(post.title)}</h3>` : ''}

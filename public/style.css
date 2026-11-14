@@ -1145,18 +1145,30 @@ body.immersive #app { padding-bottom: 0; }
 }
 .tag-thumb.empty b { color: hsl(var(--h, 210), 30%, 62%); font-size: 18px; font-weight: 800; }
 
+/* 多图缩略条：一排 3 张缩略图，第 3 张右下角标 +N（不横向滑动、不放大，免得作者水印被拉大） */
 .big-thumb-strip {
-  display: flex;
-  gap: 2px;
-  background: var(--bg-soft);
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  padding: 10px 12px 0;
+  background: var(--card);
 }
+.big-thumb-strip .thumb-wrap { position: relative; display: block; }
 .big-thumb-strip img {
-  flex: 1;
-  width: 0;
-  aspect-ratio: 1;
+  width: 100%;
+  aspect-ratio: 1 / 1;
   object-fit: cover;
+  border-radius: 8px;
+  background: var(--bg-soft);
   display: block;
 }
+.thumb-more {
+  position: absolute; right: 6px; bottom: 6px;
+  background: rgba(0, 0, 0, 0.55); color: #fff;
+  font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 99px;
+  backdrop-filter: blur(4px);
+}
+
 .multi-badge {
   position: absolute;
   top: 10px; right: 10px;
@@ -1167,50 +1179,6 @@ body.immersive #app { padding-bottom: 0; }
   padding: 3px 9px;
   border-radius: 20px;
   backdrop-filter: blur(4px);
-}
-
-/* 多图缩略图缩小 */
-.big-thumb-strip {
-  padding: 10px 12px 0;
-  gap: 6px;
-  background: var(--card);
-}
-.big-thumb-strip img {
-  width: 64px;
-  height: 64px;
-  flex: none;
-  border-radius: 8px;
-}
-
-/* 多图缩略图：放大、宫格平铺、可横向滑动 */
-.big-thumb-strip {
-  display: flex;
-  gap: 8px;
-  padding: 10px 12px 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-  background: var(--card);
-}
-.big-thumb-strip::-webkit-scrollbar { display: none; }
-.big-thumb-strip img {
-  flex: none;
-  width: 30%;
-  min-width: 108px;
-  max-width: 150px;
-  aspect-ratio: 1 / 1;
-  height: auto;
-  border-radius: 10px;
-  object-fit: cover;
-  background: var(--bg-soft);
-}
-
-/* 多图缩略图按黄金比例宽度平铺滑动 */
-.big-thumb-strip img {
-  width: 61.8%;
-  min-width: 0;
-  max-width: none;
 }
 
 /* 帖子互动 */
