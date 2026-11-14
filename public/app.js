@@ -1493,9 +1493,20 @@
         toast(following ? '已关注' : '已取消关注');
       } catch (e) { toast(e.message); }
     });
-    $('#act-share')?.addEventListener('click', () => {
-      if (navigator.share) navigator.share({ title: post.title || post.author.nick, url: post.url }).catch(() => {});
-      else openExternal(post.url);
+    $('#act-share')?.addEventListener('click', async () => {
+      const title = post.title || post.author.nick || 'LOFTER 作品';
+      const url = post.url || post.permalink || '';
+      // APK：走系统分享面板（Bridge.share），别再把用户丢进浏览器
+      if (nativeApi) {
+        try { await api('/api/share', { title, url }); return; } catch (e) {}
+      }
+      if (navigator.share) { navigator.share({ title, url }).catch(() => {}); return; }
+      try {
+        await navigator.clipboard.writeText(url);
+        toast('链接已复制');
+      } catch (e) {
+        openExternal(url);
+      }
     });
     // 详情页的「屏蔽」= 打开「不想看这条？」：可屏蔽作者，也可屏蔽作品里的标签
     const muteAct = $('#act-mute');

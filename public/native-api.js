@@ -950,6 +950,24 @@
     return { ok };
   }
 
+  // APK：弹系统分享面板（Bridge.share 里走 Intent.ACTION_SEND），不要把人丢进浏览器
+  function sharePost(title, url) {
+    if (!url) throw new Error('没有可分享的链接');
+    try {
+      if (window.Native && window.Native.share) {
+        window.Native.share(String(title || ''), String(url));
+        return { ok: true };
+      }
+    } catch (e) {}
+    try {
+      if (window.Native && window.Native.copy) {
+        window.Native.copy(String(url));
+        return { ok: true, copied: true };
+      }
+    } catch (e) {}
+    throw new Error('当前环境不支持分享');
+  }
+
   async function followBlog(blogId, domain, follow) {
     if (!(await probeLogin())) throw new Error('请先登录 LOFTER');
     const url = 'https://api.lofter.com/v1.1/follow.api?product=' + PRODUCT
@@ -1061,6 +1079,7 @@
     '/api/collections': () => collectionFolders(),
     '/api/collection-posts': (p) => collectionPosts(p.folderId, Number(p.offset) || 0),
     '/api/like': (p) => likePost(p.blogId, p.postId, p.like === '1'),
+    '/api/share': (p) => sharePost(p.title, p.url),
     '/api/follow-blog': (p) => followBlog(p.blogId, p.domain, p.follow === '1'),
     '/api/comment-add': (p) => addComment(p.blogId, p.postId, p.content, p.parentId),
     '/api/replies': (p) => replies(p.blogId, p.postId, p.commentId, Number(p.offset) || 0),

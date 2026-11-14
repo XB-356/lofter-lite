@@ -276,6 +276,23 @@ public class Bridge {
     }
 
     @JavascriptInterface
+    public void share(final String title, final String url) {
+        ui.post(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    Intent i = new Intent(Intent.ACTION_SEND);
+                    i.setType("text/plain");
+                    String t = title == null ? "" : title;
+                    i.putExtra(Intent.EXTRA_SUBJECT, t);
+                    i.putExtra(Intent.EXTRA_TEXT, t.isEmpty() ? url : t + "\n" + url);
+                    activity.startActivity(Intent.createChooser(i, "分享到"));
+                } catch (Exception ignored) {}
+            }
+        });
+    }
+
+    @JavascriptInterface
     public void toast(final String msg) {
         ui.post(new Runnable() {
             @Override
