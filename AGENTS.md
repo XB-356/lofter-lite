@@ -21,6 +21,8 @@ npm run test:live      # 真实上游联调，联网时手动跑
 npm run check          # 语法 / JSON / 相对引用自检
 npm run verify         # check + test
 npm run cache:clear    # 清 data/cache 与 data/cache-mock
+npm run desktop        # 打开 Windows 桌面启动器（不存在会先编译）
+npm run desktop:test   # 桌面启动器无界面自检
 ```
 
 提交前至少跑 `npm run verify`。涉及上游解析的改动，再跑一次 `npm run test:live`。
@@ -37,6 +39,8 @@ dev/mock-data.js     假数据生成器：产出上游原始结构，仍走真�
 public/app.js        全部前端逻辑（路由、瀑布流、详情、评论、设置）
 public/native-api.js APK 专用（Web bridge），网页版不生效
 scripts/             启动器 / 自检 / 清缓存
+desktop/src/Launcher.cs  Windows 桌面启动器（WinForms，C# 5，零依赖）
+desktop/build.ps1    用系统自带 csc.exe 编译 exe（不需要 .NET SDK）
 test/                node:test：server(HTTP) / lofter(归一化) / cache / live
 ```
 
@@ -49,6 +53,9 @@ test/                node:test：server(HTTP) / lofter(归一化) / cache / live
 - mock 的帖子 id 必须按标签区分（`postId()`），否则发现流轮流取多个标签时会把同号帖当成重复，页面上只剩 9 张卡。
 - mock 与真实数据使用**不同缓存目录**（`data/cache-mock` / `data/cache`）。混用会让 mock 的假帖子被当成真实缓存返回。
 - 测试必须离线、随机端口、独立临时缓存目录（`test/helpers.js` 已封装），不要连线上游。
+- 每次改动单独一个 commit（一个 commit 一件事），**推送要等用户确认**，不要自作主张 push。
+- `desktop/` 是 C#：只能写 **C# 5** 语法（系统自带 csc.exe 是 .NET Framework 4.x 的旧编译器），不要用字符串内插、`?.`、`nameof`、`=>` 表达式体成员等新语法。
+- `desktop/src/Launcher.cs`、`desktop/build.ps1` 这类含中文的 `.cs` / `.ps1` **必须存成 UTF-8 with BOM**：csc 与 Windows PowerShell 5.1 默认按 ANSI(GBK) 读源码，没 BOM 会乱码甚至语法错误。
 
 ## 不要做
 
@@ -62,5 +69,5 @@ test/                node:test：server(HTTP) / lofter(归一化) / cache / live
 - 上游列表里偶尔混入 `null`（下架 / 风控 / 分页边界），`normalizePost` 已做空值保护，`map` 之后必须 `filter(Boolean)`，别再退回去。
 - 视频帖的 `embed` 是 JSON 字符串，里面才有 mp4 地址。
 - 图片链接要经过前端 `thumb()` 追加 `imageView&thumbnail=` 参数；mock 占位图忽略这些参数。
-- Windows 上不要用 PowerShell `Start-Process` 起服务（本机环境变量里 `NO_PROXY`/`no_proxy` 重复会让它报错），用 `npm run dev` 或后台 job。
+- Windows 上不要用 PowerShell `Start-Process` 起服务（本机环境变量里 `NO_PROXY`/`no_proxy` 重复会让它报错），用 `npm run dev` 或后台 job。同一个坑对 .NET Framework 的 `ProcessStartInfo.EnvironmentVariables` 也生效：一访问就抛 `ArgumentException`（已添加项。字典中的关键字:NO_PROXY），所以桌面启动器改用 `cmd /c set PORT=…&&set HOST=…&&"node.exe" server.js` 起服务，别改回去。cmd 套一层后要 `taskkill /PID <pid> /T /F` 整棵树收尸，只 Kill 父进程会留孤儿进程占着端口。
 - 请求日志会打印所有非 `/api/` 路径；接口出错打印 `[api]` 行带状态码和耗时，排障先看它。
