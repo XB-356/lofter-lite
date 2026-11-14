@@ -195,10 +195,18 @@ public class Bridge {
     @JavascriptInterface
     public boolean isLoggedIn() {
         try {
-            String c = CookieManager.getInstance().getCookie("https://www.lofter.com");
-            if (c == null) return false;
-            return c.contains("LOFTER_SESSION") || c.contains("p_uid")
-                    || c.contains("LOFTER_UID") || c.contains("lofter_uid");
+            // 实测 2026-11 登录后的 cookie 名是 LOFTER_SESS（不是 LOFTER_SESSION），
+            // 且 api.lofter.com 与 www.lofter.com 两个域都要看，否则已登录也会判成未登录。
+            final String[] hosts = { "https://www.lofter.com", "https://api.lofter.com" };
+            final String[] marks = { "LOFTER_SESS", "LOFTER_SESSION", "p_uid", "LOFTER_UID", "lofter_uid" };
+            for (int h = 0; h < hosts.length; h++) {
+                String c = CookieManager.getInstance().getCookie(hosts[h]);
+                if (c == null) continue;
+                for (int m = 0; m < marks.length; m++) {
+                    if (c.indexOf(marks[m]) >= 0) return true;
+                }
+            }
+            return false;
         } catch (Exception e) {
             return false;
         }
