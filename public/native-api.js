@@ -152,6 +152,8 @@
     const tags = Array.isArray(post.tagList) ? post.tagList
       : String(post.tag || '').split(',').map((x) => x.trim()).filter(Boolean);
     const ppv = post.photoPostView || {};
+    // 视频帖（type 4）没有 image/firstImageUrl，封面只在 videoPostView.videoInfo 里
+    const vi = (post.videoPostView && post.videoPostView.videoInfo) || post.videoInfo || {};
     const firsts = parseArr(post.firstImageUrl).length ? parseArr(post.firstImageUrl) : parseArr(ppv.firstImageUrl);
     const links = parseArr(post.photoLinks).length ? parseArr(post.photoLinks) : parseArr(ppv.photoLinks);
     const first = links.filter(Boolean)[0] || ppv.firstImage || {};
@@ -161,8 +163,11 @@
       const im = post.image || post.firstImage || post.cover || post.coverUrl;
       cover = Array.isArray(im) ? im[0] : (typeof im === 'string' ? im : '');
     }
+    // 视频帖的封面（拿不到 image/firstImageUrl 时兜底）
+    if (!cover) cover = vi.video_img_url || vi.video_first_img || '';
     if (Array.isArray(cover)) cover = cover[0];
     if (cover && typeof cover === 'object') cover = cover.url || cover.image || cover.orign || '';
+    const dur = Number(vi.duration) || 0;
     const pcRaw = post.photoCount || (post.photoPostView && post.photoPostView.photoCount);
     const pc = pcRaw && typeof pcRaw === 'object'
       ? (pcRaw.photoCount || pcRaw.count || 0)
@@ -177,11 +182,12 @@
       author, stats: normStats(post), cover,
       thumbs: photos.slice(0, 6),
       photoCount: pc || photos.length,
-      coverW: wh.w || first.ow || 0, coverH: wh.h || first.oh || 0,
+      coverW: wh.w || first.ow || Number(vi.img_width) || 0, coverH: wh.h || first.oh || Number(vi.img_height) || 0,
       permalink: post.permalink || '',
       url: post.blogPageUrl || (author.name && post.permalink ? 'https://' + author.name + '.lofter.com/post/' + post.permalink : ''),
       originBlogId: post.blogId || author.id || 0,
       hot: post.hot || 0, wordCount: post.wordCount || post.totalWordCount || 0,
+      dur,
       locked: !!(post.payView || post.needPay || post.fansVipPost),
     };
   }
@@ -678,7 +684,13 @@
           const merged = Object.assign({}, it.postData || {}, pv || {});
           if (!merged.blogInfo) merged.blogInfo = it.blogInfo || pv.blogInfo || findBlogInfo(it) || null;
           const n = normPost(merged);
-          if (n && n.id) posts.push(n);
+          if (n && n.id) {
+            // item.type：1 = 关注的人自己发的，2 = 关注的人推荐的（shareInfo 里是推荐人）
+            n.rec = t === 2 || !!it.shareInfo;
+            const sbi = it.shareInfo && it.shareInfo.blogInfo;
+            if (sbi) n.recBy = sbi.blogNickName || sbi.blogName || '';
+            posts.push(n);
+          }
         }
       }
     }
