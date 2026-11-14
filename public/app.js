@@ -1693,7 +1693,7 @@
         const row = raw[tag];
         if (!row || !Array.isArray(row.covers) || !row.covers.length) return;
         tagCardCache.set(tag + '|' + (row.seenAt || 0), {
-          v: { covers: row.covers.slice(0, 3), updates: row.updates || 0, sampled: row.sampled || 0, top: row.top || null },
+          v: { covers: row.covers.slice(0, 3), updates: row.updates || 0, sampled: row.sampled || 0, info: row.info || null, top: row.top || null },
           exp: now + TAG_CARD_TTL,
         });
       });
@@ -1708,7 +1708,7 @@
         if (!hit || !hit.v) return;
         const tag = key.slice(0, key.lastIndexOf('|'));
         const seenAt = Number(key.slice(key.lastIndexOf('|') + 1)) || 0;
-        out[tag] = { covers: (hit.v.covers || []).slice(0, 3), updates: hit.v.updates || 0, sampled: hit.v.sampled || 0, top: hit.v.top || null, seenAt };
+        out[tag] = { covers: (hit.v.covers || []).slice(0, 3), updates: hit.v.updates || 0, sampled: hit.v.sampled || 0, info: hit.v.info || null, top: hit.v.top || null, seenAt };
       });
       try { localStorage.setItem(TAG_CARD_KEY, JSON.stringify(out)); } catch (e) {}
     }, 500);
@@ -1976,11 +1976,15 @@
     const allowed = posts.filter((p) => !isBlockedPost(p));
     const withCover = allowed.filter((p) => p.cover);
     let covers = withCover.slice(0, 3).map((p) => p.cover);
+    let info = null;
     // 纯文字标签（比如「原创文学」）列表里一张封面都没有，退回话题页头图，别留个空卡
     if (!covers.length) {
       try {
-        const info = await api('/api/taginfo', { name: tag });
-        if (info && info.cover) covers = [info.cover];
+        const ti = await api('/api/taginfo', { name: tag });
+        if (ti) {
+          if (ti.cover) covers = [ti.cover];
+          info = { followers: ti.followers || 0, views: ti.views || 0 };
+        }
       } catch (e) {}
     }
     const since = seenAt || (Date.now() - 7 * 86400000);
@@ -1990,6 +1994,7 @@
       covers,
       updates,
       sampled: allowed.length,
+      info,
       top: topPost ? {
         title: topPost.title || '',
         digest: topPost.digest || '',
@@ -2011,13 +2016,13 @@
   }
 
   function tagSubText(v) {
+    // LOFTER 没有「标签内作品总数」这种字段（tagPosts 只有 items/offset，话题页也没有），
+    // 所以不要拿第一页的条数冒充总数：有标题就显示标题，纯文字标签显示关注/浏览数。
     if (!v) return '正在读取…';
     const top = v.top || {};
-    const label = top.title || top.digest || '';
-    const bits = [];
-    if (label) bits.push(label);
-    if (v.sampled) bits.push(v.sampled + ' 件作品');
-    return bits.join(' · ') || '这个标签下还没有作品';
+    if (top.title || top.digest) return top.title || top.digest;
+    if (v.info && v.info.followers) return num(v.info.followers) + ' 人关注 · ' + num(v.info.views) + ' 次浏览';
+    return '';
   }
 
   function fillTagCard(el, v) {
