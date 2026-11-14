@@ -18,6 +18,7 @@
     "desktop": "node scripts/desktop.mjs",
     "desktop:build": "powershell -NoProfile -ExecutionPolicy Bypass -File desktop/build.ps1",
     "desktop:test": "node scripts/desktop.mjs --self-test",
+    "apk": "powershell -NoProfile -ExecutionPolicy Bypass -File android/build.ps1",
     "verify": "npm run check && npm test"
   },
   "engines": {
