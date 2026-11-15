@@ -146,3 +146,4 @@ test/                node:test：server(HTTP) / lofter(归一化) / cache / live
 - **卡片样式在用户主页 / 合集页可切**：`store.settings.cardMode = { blog: 'small'|'big', collection: … }`，`cardMode(kind)` / `cardModeBar(kind)` / `feedShell(kind)` / `addPostToFeed(m, post)` 四个函数一处管；小卡走 `.masonry` + `cardEl`，大卡走 `.big-list` + `bigCardEl`（容器 ID 固定 `#masonry` / `#big-list`，别在新视图里另起名字）。切换时 `saveSettings()` 后直接 `render()` 重进当前路由。
 - **搜索结果里的作品也必须是作品卡片**（不是行）：`mountPostCards(host, posts)` 里建一个 `.masonry.res-masonry` 再 `cardEl`，标签/用户仍是 `.res-row`。新增搜索类型时注意「全部」tab 是分段（标签/用户/作品），作品段要占位后挂载，不能直接塞 HTML 字符串。
 - **`android/build.ps1` 已给 javac / d8 加内存上限**（`-J-Xmx512m` / `-Xmx512m`）：机器内存紧张（开着浏览器、同时跑服务）时 d8 会 `insufficient memory for the Java Runtime Environment` 直接失败，表现为「javac 编译失败 / d8 失败」，别以为是代码写错。
+- 文档分工：`README.md` 只面向用户（含截图与 Releases 下载链接），开发者内容在 `DEVELOP.md`；打好的 APK 作为 GitHub Release 附件发布，不进仓库（`*.apk` 已在 `.gitignore`）。
