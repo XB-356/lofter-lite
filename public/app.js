@@ -1798,6 +1798,20 @@
 
     // 详情页的滚动位置也由全局 restoreScroll 处理（从评论返回时能回到原处）
     let liked = !!post.liked, following = !!post.followed;
+    // 顶栏的关注按钮：和底部 act-follow 共用同一套状态
+    function setFollowTop(on) {
+      const b = $('#btn-follow-top');
+      if (!b) return;
+      b.classList.toggle('on', on);
+      const s = b.querySelector('span');
+      if (s) s.textContent = on ? '已关注' : '关注';
+    }
+    const topFollow = $('#btn-follow-top');
+    if (topFollow) {
+      topFollow.hidden = false;
+      setFollowTop(following);
+      topFollow.addEventListener('click', () => { $('#act-follow')?.click(); });
+    }
     if (post.author && mutedBlogList().some((x) => x.name === post.author.name)) {
       $('#act-mute')?.classList.add('on');
       const s = $('#act-mute')?.querySelector('span');
