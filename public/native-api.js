@@ -1253,6 +1253,97 @@
     throw new Error('当前环境不支持分享');
   }
 
+  // ---- 搜索（/newsearch/* 系列：返回 {msg, code, data}，和别的接口不是一套结构）----
+  async function searchJson(path, params) {
+    const qs = new URLSearchParams(Object.assign({ product: PRODUCT }, params)).toString();
+    const text = await req('https://api.lofter.com' + path + '?' + qs, {
+      headers: { 'User-Agent': APP_UA, Accept: '*/*' },
+    });
+    let j;
+    try { j = JSON.parse(text); } catch (e) { throw new Error('搜索返回异常'); }
+    if (j.code !== 0) throw new Error(j.msg || '搜索失败');
+    return j.data || {};
+  }
+
+  async function searchTags(key, offset) {
+    const k = String(key || '').trim();
+    if (!k) return { list: [], next: 0, hasMore: false };
+    const d = await searchJson('/newsearch/tag.json', { key: k, offset: Number(offset) || 0 });
+    return {
+      list: (d.tags || []).map((t) => ({ name: t.tagName || '', count: Number(t.joinCount) || 0, cover: t.imageUrl || '' })).filter((t) => t.name),
+      next: Number(d.offset) || 0,
+      hasMore: Number(d.offset) > 0,
+    };
+  }
+
+  async function searchBlogs(key, offset) {
+    const k = String(key || '').trim();
+    if (!k) return { list: [], next: 0, hasMore: false };
+    const d = await searchJson('/newsearch/blog.json', { key: k, offset: Number(offset) || 0 });
+    return {
+      list: (d.blogs || []).map((b) => {
+        const bi = b.blogInfo || b;
+        return {
+          id: bi.blogId,
+          name: bi.blogName || '',
+          nick: bi.blogNickName || bi.blogName || '',
+          avatar: bi.bigAvaImg || '',
+          intro: bi.selfIntro || '',
+        };
+      }).filter((b) => b.name),
+      next: Number(d.offset) || 0,
+      hasMore: Number(d.offset) > 0,
+    };
+  }
+
+  async function searchPosts(key, offset) {
+    const k = String(key || '').trim();
+    if (!k) return { list: [], total: 0, next: 0, hasMore: false };
+    const d = await searchJson('/newsearch/post.json', { key: k, offset: Number(offset) || 0 });
+    return {
+      list: (d.posts || []).map((p) => normPost(p.post || p)).filter(Boolean),
+      total: Number(d.totalCount) || 0,
+      next: Number(d.offset) || 0,
+      hasMore: Number(d.offset) > 0,
+    };
+  }
+
+  // ---- 写进账号：屏蔽（不想看 TA 的动态）/ 屏蔽标签 / 拉黑 ----
+  async function writeAccount(url, form, what) {
+    if (!(await probeLogin())) throw new Error('请先登录 LOFTER');
+    const text = await req(url, {
+      method: 'POST',
+      body: new URLSearchParams(form).toString(),
+      headers: Object.assign({}, WRITE_HEADERS, { 'Content-Type': 'application/x-www-form-urlencoded' }),
+    });
+    let j;
+    try { j = JSON.parse(text); } catch (e) { throw new Error(what + '返回异常'); }
+    const meta = (j && j.meta) || {};
+    if (meta.status === 4071) {
+      const err = new Error('LOFTER 认为操作太快，需要先完成人机验证');
+      err.needCaptcha = true;
+      throw err;
+    }
+    const ok = (meta.status === 200) || (j && j.code === 0);
+    if (!ok) throw new Error(meta.msg || (j && j.msg) || (what + '失败'));
+    return { ok: true };
+  }
+
+  function shieldBlogAccount(blogId, on) {
+    return writeAccount('https://api.lofter.com/timeline/manage.json?product=' + PRODUCT,
+      { op: on ? 'shield' : 'show', blogId: String(blogId) }, '同步屏蔽');
+  }
+
+  function shieldTagAccount(tag, on) {
+    return writeAccount('https://api.lofter.com/v1.1/forbidtagsmanage.api?product=' + PRODUCT,
+      { optype: on ? 'add' : 'del', tag: String(tag) }, '同步标签屏蔽');
+  }
+
+  function blockBlogAccount(blogId, on) {
+    return writeAccount('https://api.lofter.com/v1.1/blacklistmanage.api?product=' + PRODUCT,
+      { optype: on ? 'add' : 'del', targetblogid: String(blogId) }, '同步拉黑');
+  }
+
   async function followBlog(blogId, domain, follow) {
     if (!(await probeLogin())) throw new Error('请先登录 LOFTER');
     const url = 'https://api.lofter.com/v1.1/follow.api?product=' + PRODUCT
@@ -1379,6 +1470,12 @@
     '/api/replies': (p) => replies(p.blogId, p.postId, p.commentId, Number(p.offset) || 0),
     '/api/sync-blocks': () => syncBlocks(),
     '/api/blog-brief': (p) => blogBriefById(p.id),
+    '/api/search-tags': (p) => searchTags(p.q, p.offset),
+    '/api/search-blogs': (p) => searchBlogs(p.q, p.offset),
+    '/api/search-posts': (p) => searchPosts(p.q, p.offset),
+    '/api/account-shield-blog': (p) => shieldBlogAccount(p.blogId, p.on === '1'),
+    '/api/account-shield-tag': (p) => shieldTagAccount(p.tag, p.on === '1'),
+    '/api/account-block-blog': (p) => blockBlogAccount(p.blogId, p.on === '1'),
     '/api/me': () => cached('me', 5 * 60e3, getProfile),
     '/api/subscribed': () => cached('subscribed', 10 * 60e3, getSubscribedTags),
     '/api/diag': () => diag(),

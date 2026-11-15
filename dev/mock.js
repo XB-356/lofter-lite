@@ -144,12 +144,52 @@ async function comments(blogId, postId, offset = 0) {
   };
 }
 
+async function searchTags(key, offset = 0) {
+  await gate();
+  const tag = String(key || '').trim();
+  if (!tag) return { list: [], next: 0, hasMore: false };
+  const list = [
+    { name: tag, count: 12000, cover: data.img(1200, 675, tag) },
+    { name: tag + '同人', count: 3400, cover: data.img(1200, 675, tag + '1') },
+    { name: tag + '原创', count: 980, cover: data.img(1200, 675, tag + '2') },
+  ];
+  return { list: offset === 0 ? list : [], next: 0, hasMore: false };
+}
+
+async function searchBlogs(key, offset = 0) {
+  await gate();
+  const name = String(key || '').trim();
+  if (!name) return { list: [], next: 0, hasMore: false };
+  const list = ['a', 'b'].map((s) => ({
+    id: 500000 + s.charCodeAt(0),
+    name: name + s,
+    nick: name + '·' + s.toUpperCase(),
+    avatar: data.img(96, 96, name + s),
+    intro: '写点不押韵的东西',
+  }));
+  return { list: offset === 0 ? list : [], next: 0, hasMore: false };
+}
+
+async function searchPosts(key, offset = 0) {
+  await gate();
+  const tag = String(key || '').trim();
+  if (!tag) return { list: [], total: 0, next: 0, hasMore: false };
+  const sized = [[900, 900], [1200, 800], [600, 900]];
+  const posts = [0, 1, 2]
+    .map((i) => lofter.normalizePost(data.rawPost(910000 + i, tag, { ratio: sized[i % sized.length] })))
+    .filter(Boolean);
+  return { list: offset === 0 ? posts : [], total: posts.length, next: 0, hasMore: false };
+}
+
 module.exports = {
   tagPosts,
   comments,
   postDetail,
   blogHome,
   tagInfo,
+  searchTags,
+  searchBlogs,
+  searchPosts,
   normalizePost: lofter.normalizePost,
   normalizeDetail: lofter.normalizeDetail,
   normalizeComment: lofter.normalizeComment,

@@ -2718,60 +2718,112 @@
   }
 
   // ================= 页面：搜索 =================
+  // 三种结果：标签 / 用户 / 作品（走 /newsearch/*；作品搜索只有登录态才有结果）
+  const SEARCH_TABS = [['all', '全部'], ['tag', '标签'], ['blog', '用户'], ['post', '作品']];
   async function viewSearch(initial = '') {
     setTab('search');
     setHeader(`<div class="h-title">搜索</div><div class="spacer"></div>`);
     const recent = store.recentTags;
+    let mode = 'all';
     viewEl.innerHTML = `
       <div class="search-wrap">
         <div class="search-box">
           ${icon('search')}
-          <input id="q" type="search" placeholder="搜索标签，比如「摄影」「原神」" value="${esc(initial)}" enterkeyhint="search" autocomplete="off">
+          <input id="q" type="search" placeholder="搜标签、用户、作品" value="${esc(initial)}" enterkeyhint="search" autocomplete="off">
           <button class="clear" id="clear" hidden>✕</button>
+        </div>
+        <div class="search-tabs" id="search-tabs">
+          ${SEARCH_TABS.map(([k, label]) => `<button class="st${k === 'all' ? ' on' : ''}" data-mode="${k}">${label}</button>`).join('')}
         </div>
       </div>
       <div class="search-body" id="results">
         ${recent.length ? `<div class="recent-head"><span>最近搜索</span><button id="clear-tags">清空</button></div>
           <div class="chips">${recent.map((t) => `<a class="chip sm" href="#/tag/${encodeURIComponent(t)}"># ${esc(t)}</a>`).join('')}</div>` : ''}
-        <div class="search-tip">输入关键词后，可以直接进入对应的话题。#标签 是 LOFTER 内容的主要入口。</div>
+        <div class="search-tip">可以搜标签、用户和作品。点标签进话题，点用户进主页，点作品看详情。</div>
       </div>`;
     const input = $('#q');
     const results = $('#results');
     const clearBtn = $('#clear');
+    const tabsEl = $('#search-tabs');
     let timer = 0;
+    let seq = 0;
 
-    function renderResults(q) {
-      if (!q) return;
-      results.innerHTML = `
-        <a class="result-row" href="#/tag/${encodeURIComponent(q)}">
-          <span class="hash">#</span><span>${esc(q)}</span>
-          <span class="arr">进入话题 ${icon('chevron')}</span>
-        </a>
-        <div id="sug"></div>`;
-      api('/api/search', { q }).then((data) => {
-        const sug = $('#sug');
-        if (!sug || !data.tags?.length) return;
-        sug.innerHTML = `<div class="recent-head" style="margin-top:18px"><span>相关标签</span></div>` +
-          data.tags.filter((t) => t !== q).map((t) =>
-            `<a class="result-row" href="#/tag/${encodeURIComponent(t)}"><span class="hash">#</span>${esc(t)}<span class="arr">${icon('chevron')}</span></a>`).join('');
-      }).catch(() => {});
+    const tagRow = (t) => `<a class="res-row" href="#/tag/${encodeURIComponent(t.name)}">
+        <span class="res-hash">#</span>
+        <span class="res-main"><b>${esc(t.name)}</b><i>${t.count ? num(t.count) + ' 人关注' : '话题'}</i></span>
+        ${icon('chevron')}
+      </a>`;
+    const blogRow = (b) => `<a class="res-row" href="#/blog/${encodeURIComponent(b.name)}">
+        <span class="res-ava">${b.avatar ? `<img src="${esc(thumb(b.avatar, 96))}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : icon('user')}</span>
+        <span class="res-main"><b>${esc(b.nick || b.name)}</b><i>@${esc(b.name)}${b.intro ? ' · ' + esc(b.intro) : ''}</i></span>
+        ${icon('chevron')}
+      </a>`;
+    const postRow = (p) => `<a class="res-row res-post" href="#/post/${p.author.id}/${p.id}">
+        ${p.cover ? `<span class="res-cover"><img src="${esc(thumb(p.cover, 240))}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"></span>` : ''}
+        <span class="res-main"><b>${esc(p.title || '无标题')}</b><i>@${esc(p.author.nick || p.author.name)}</i></span>
+      </a>`;
+
+    async function run(q) {
+      const my = ++seq;
+      results.innerHTML = '<div class="search-loading">搜索中…</div>';
+      try {
+        if (mode === 'tag') {
+          const d = await api('/api/search-tags', { q });
+          if (my !== seq) return;
+          results.innerHTML = d.list.length ? `<div class="res-list">${d.list.map(tagRow).join('')}</div>` : emptyEl('没有找到相关标签', false);
+        } else if (mode === 'blog') {
+          const d = await api('/api/search-blogs', { q });
+          if (my !== seq) return;
+          results.innerHTML = d.list.length ? `<div class="res-list">${d.list.map(blogRow).join('')}</div>` : emptyEl('没有找到相关用户', false);
+        } else if (mode === 'post') {
+          const d = await api('/api/search-posts', { q });
+          if (my !== seq) return;
+          results.innerHTML = d.list.length ? `<div class="res-list">${d.list.map(postRow).join('')}</div>`
+            : emptyEl('没有找到相关作品（作品搜索需要登录 LOFTER 账号）', false);
+        } else {
+          const [tags, blogs, posts] = await Promise.all([
+            api('/api/search-tags', { q }).catch(() => ({ list: [] })),
+            api('/api/search-blogs', { q }).catch(() => ({ list: [] })),
+            api('/api/search-posts', { q }).catch(() => ({ list: [] })),
+          ]);
+          if (my !== seq) return;
+          const blocks = [];
+          if (tags.list.length) blocks.push(`<div class="res-sec"><div class="res-head">标签</div>${tags.list.slice(0, 5).map(tagRow).join('')}</div>`);
+          if (blogs.list.length) blocks.push(`<div class="res-sec"><div class="res-head">用户</div>${blogs.list.slice(0, 5).map(blogRow).join('')}</div>`);
+          if (posts.list.length) blocks.push(`<div class="res-sec"><div class="res-head">作品</div>${posts.list.slice(0, 5).map(postRow).join('')}</div>`);
+          results.innerHTML = blocks.length ? blocks.join('') : emptyEl('没有找到相关内容，换个关键词试试', false);
+        }
+      } catch (e) {
+        if (my === seq) results.innerHTML = emptyEl(e.message || '搜索失败', true);
+      }
     }
 
-    input.addEventListener('input', () => {
+    function fire() {
       const q = input.value.trim();
       clearBtn.hidden = !q;
+      if (!q) return;
       clearTimeout(timer);
-      timer = setTimeout(() => renderResults(q), 220);
-    });
+      timer = setTimeout(() => run(q), 260);
+    }
+    input.addEventListener('input', fire);
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        const q = input.value.trim();
-        if (q) { store.addRecentTag(q); nav('#/tag/' + encodeURIComponent(q)); }
-      }
+      if (e.key !== 'Enter') return;
+      const q = input.value.trim();
+      if (!q) return;
+      store.addRecentTag(q);
+      clearTimeout(timer);
+      run(q);
     });
-    clearBtn.addEventListener('click', () => { input.value = ''; clearBtn.hidden = true; input.focus(); renderResults(''); viewSearch(); });
+    tabsEl.addEventListener('click', (e) => {
+      const b = e.target.closest('.st');
+      if (!b) return;
+      mode = b.dataset.mode;
+      $$('#search-tabs .st').forEach((x) => x.classList.toggle('on', x === b));
+      if (input.value.trim()) run(input.value.trim());
+    });
+    clearBtn.addEventListener('click', () => { input.value = ''; clearBtn.hidden = true; results.innerHTML = ''; input.focus(); });
     $('#clear-tags')?.addEventListener('click', () => { store.recentTags = []; store.saveRecent(); viewSearch(); });
-    if (initial) { renderResults(initial); }
+    if (initial) fire();
     setTimeout(() => { if (!initial) input.focus(); }, 120);
   }
 

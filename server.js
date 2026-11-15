@@ -15,7 +15,7 @@ const { categories, defaultTags } = require('./lib/catalog');
 // LOFTER_LITE_MOCK=1 → 用 dev/mock.js 的本地假数据，完全不碰外网（UI 联调 / 测试用）
 const MOCK = process.env.LOFTER_LITE_MOCK === '1';
 const dataSource = MOCK ? require('./dev/mock') : require('./lib/lofter');
-const { tagPosts, postDetail, blogHome, tagInfo, comments, UpstreamError } = dataSource;
+const { tagPosts, postDetail, blogHome, tagInfo, comments, searchTags, searchBlogs, searchPosts, UpstreamError } = dataSource;
 
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || '127.0.0.1';
@@ -339,6 +339,21 @@ const server = http.createServer(async (req, res) => {
           return await handleBlog(q, res);
         case '/api/search':
           return handleSearch(q, res);
+        case '/api/search-tags': {
+          const key = String(q.get('q') || '').trim();
+          if (!key) return json(res, 400, { error: '缺少搜索关键词' });
+          return json(res, 200, await searchTags(key, Number(q.get('offset')) || 0));
+        }
+        case '/api/search-blogs': {
+          const key = String(q.get('q') || '').trim();
+          if (!key) return json(res, 400, { error: '缺少搜索关键词' });
+          return json(res, 200, await searchBlogs(key, Number(q.get('offset')) || 0));
+        }
+        case '/api/search-posts': {
+          const key = String(q.get('q') || '').trim();
+          if (!key) return json(res, 400, { error: '缺少搜索关键词' });
+          return json(res, 200, await searchPosts(key, Number(q.get('offset')) || 0));
+        }
         case '/api/comments':
           return await handleComments(q, res);
         case '/api/follow':
