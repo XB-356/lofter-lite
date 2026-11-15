@@ -138,3 +138,7 @@ test/                node:test：server(HTTP) / lofter(归一化) / cache / live
 - **搜索走 `https://api.lofter.com/newsearch/*`**：`tag.json`（`data.tags[]`：`tagName/joinCount/imageUrl`）、`blog.json`（`data.blogs[].blogInfo`：`blogId/blogName/blogNickName/bigAvaImg/selfIntro`）、`post.json`（`data.posts[]` + `totalCount`，**匿名返回空，必须登录态**）。服务端封装成 `/api/search-tags|search-blogs|search-posts`（`lib/lofter.js` 的 `searchJson()` 统一处理 `code !== 0`），前端在 `viewSearch` 里分「全部 / 标签 / 用户 / 作品」四个 tab，全部模式各取前 5 条。
 - **「同步到账号」是可选开关**（`store.settings.syncBlockToAccount`，默认 false）：标签屏蔽走 `POST /v1.1/forbidtagsmanage.api`（`optype=add|del&tag=`）、拉黑走 `POST /v1.1/blacklistmanage.api`（`optype=add|del&targetblogid=`）、屏蔽某人动态走 `POST /timeline/manage.json`（`op=shield|show&blogId=`）。这些是**写账号**的操作，必须带 `WRITE_HEADERS` 的设备指纹，遇 4071 要能弹滑块；`accountSync()` 失败只 toast 提示，本机屏蔽照旧生效。开启前必须 `confirm(ACCT_SYNC_TIP)` 把风控风险说清楚。
 - **屏蔽相关 UI 只有一个入口**：`#/muted`、`#/blocked`、`#/keywords`、`#/blacklist` 共用 `blockTabs(active)` 顶栏，`BLOCK_ROUTES` 里的页面由 `render()` 的 `finally` 统一挂右下角 `#blk-io`（导入 / 导出）与 `#/block-io` 页面；不要在某个子页里再单独放导入导出按钮。
+
+- 长按作品卡片只弹「不想看这条？」面板，卡片文字不可选中（`public/style.css` 的 `.card, .big-card { user-select: none }`）；评论少于 6 条时 `#cmt-compose-bottom` 会被隐藏。
+- 详情页「为什么被屏蔽」用 `blockCauses(p)`（返回 `{text, short}`），卡片里显示作者/标题/标签 + 「该作品已被【short】屏蔽」；合集上一篇/下一篇靠 `/api/collection` 最多翻 6 页找位置，找不到就把合集卡整个移除。
+- 标签里的 `tagList` 偶尔夹 `undefined`/空串，两份归一化都要 `map(String).filter(Boolean)`，否则列表里会出现 `#undefined`。
