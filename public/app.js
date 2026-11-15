@@ -1777,7 +1777,13 @@
             <span class="orig-arr">${icon('chevron')}</span>
           </button>
           <section class="cmt-sec" id="comments">
-            <div class="cmt-head"><span class="cmt-title">评论</span><span class="cmt-count">${num(post.stats.comment)}</span></div>
+            <div class="cmt-head">
+              <span class="cmt-title">评论</span><span class="cmt-count">${num(post.stats.comment)}</span>
+              <div class="cmt-tabs" id="cmt-tabs">
+                <button class="ch on" data-sort="hot">热门</button>
+                <button class="ch" data-sort="new">最新</button>
+              </div>
+            </div>
             <div class="cmt-compose"><input class="cmt-input" maxlength="500" placeholder="写评论…"><button class="cmt-send">发送</button></div>
             <div id="cmt-body"><div class="load-more"><span class="spinner"></span>评论加载中</div></div>
             <div class="cmt-compose"><input class="cmt-input" maxlength="500" placeholder="写评论…"><button class="cmt-send">发送</button></div>
@@ -2009,6 +2015,10 @@
   function loadComments(post) {
     const body = document.getElementById('cmt-body');
     if (!body) return;
+    const tabs = document.getElementById('cmt-tabs');
+    // 上游没有排序参数可用：hotList 本身就是按热度给的，list 是按时间给的，
+    // 所以「热门 / 最新」两个 tab 各用一批数据，不用给接口传 order。
+    let sort = 'hot';
     let offset = 0, loading = false, done = false;
     // 热门评论和普通列表会重叠（同一条既在 hotList 又在 list），翻页时也可能重复，
     // 所以按 id 记一份已经渲染过的，插之前先过一遍。
@@ -2022,41 +2032,67 @@
       });
     }
 
-    async function fetchPage(first) {
+    function reset() {
+      offset = 0;
+      loading = false;
+      done = false;
+      seen.clear();
+    }
+
+    function emptyBox() {
+      body.innerHTML = '<div class="cmt-empty">还没有评论，去 LOFTER 抢个沙发</div>';
+    }
+
+    function addMore() {
+      if (document.getElementById('cmt-more')) return;
+      const more = document.createElement('button');
+      more.className = 'cmt-more-btn';
+      more.id = 'cmt-more';
+      more.textContent = '加载更多评论';
+      more.addEventListener('click', () => render());
+      body.appendChild(more);
+    }
+
+    async function render() {
       if (loading || done) return;
       loading = true;
       try {
-        const data = await api('/api/comments', { blogId: post.author.id, postId: post.id, offset });
+        const data = await api('/api/comments', {
+          blogId: post.author.id,
+          postId: post.id,
+          offset: sort === 'hot' ? 0 : offset,
+        });
         if (!document.getElementById('cmt-body')) return;
-        const hotList = first ? fresh(data.hot) : [];
-        const pageList = fresh(data.list);
-        if (first) {
+        if (sort === 'hot') {
+          const hot = fresh(data.hot);
+          const pageList = fresh(data.list);
           body.innerHTML = '';
-          if (hotList.length) {
-            const hot = document.createElement('div');
-            hot.className = 'cmt-hot';
-            hot.innerHTML = `<div class="cmt-label">热门评论</div>${hotList.map(commentEl).join('')}`;
-            body.appendChild(hot);
+          if (hot.length) {
+            const wrap = document.createElement('div');
+            wrap.className = 'cmt-hot';
+            wrap.innerHTML = `<div class="cmt-label">热门评论</div>${hot.map(commentEl).join('')}`;
+            body.appendChild(wrap);
           }
-          const list = document.createElement('div');
-          list.id = 'cmt-list';
-          body.appendChild(list);
-          const more = document.createElement('button');
-          more.className = 'cmt-more-btn';
-          more.id = 'cmt-more';
-          more.textContent = '加载更多评论';
-          more.addEventListener('click', () => fetchPage(false));
-          body.appendChild(more);
-        }
-        const list = document.getElementById('cmt-list');
-        if (list && pageList.length) list.insertAdjacentHTML('beforeend', pageList.map(commentEl).join(''));
-        offset = data.next;
-        if (offset < 0 || !data.list.length) {
+          if (pageList.length) {
+            const list = document.createElement('div');
+            list.id = 'cmt-list';
+            list.innerHTML = pageList.map(commentEl).join('');
+            body.appendChild(list);
+          }
           done = true;
-          document.getElementById('cmt-more')?.remove();
-        }
-        if (first && !hotList.length && !pageList.length) {
-          body.innerHTML = '<div class="cmt-empty">还没有评论，去 LOFTER 抢个沙发</div>';
+          if (!hot.length && !pageList.length) emptyBox();
+        } else {
+          const pageList = fresh(data.list);
+          if (!offset && !document.getElementById('cmt-list')) {
+            body.innerHTML = '<div id="cmt-list"></div>';
+          }
+          const list = document.getElementById('cmt-list');
+          if (list && pageList.length) list.insertAdjacentHTML('beforeend', pageList.map(commentEl).join(''));
+          offset = data.next;
+          if (offset < 0 || !data.list.length) done = true;
+          if (done) document.getElementById('cmt-more')?.remove();
+          else addMore();
+          if (done && !document.querySelector('#cmt-body .cmt')) emptyBox();
         }
       } catch (err) {
         if (body) body.innerHTML = `<div class="cmt-empty">${esc(err.message || '评论加载失败')}</div>`;
@@ -2064,7 +2100,19 @@
         loading = false;
       }
     }
-    fetchPage(true);
+
+    if (tabs) {
+      tabs.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-sort]');
+        if (!btn || btn.dataset.sort === sort) return;
+        sort = btn.dataset.sort;
+        reset();
+        tabs.querySelectorAll('.ch').forEach((el) => el.classList.toggle('on', el === btn));
+        body.innerHTML = '<div class="load-more"><span class="spinner"></span>评论加载中</div>';
+        render();
+      });
+    }
+    render();
   }
 
   // ================= 图片查看器 =================
