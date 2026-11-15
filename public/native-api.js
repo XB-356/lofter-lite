@@ -171,8 +171,10 @@
       delete post.postView;
     }
     const author = normAuthor(post);
-    const tags = Array.isArray(post.tagList) ? post.tagList
+    const rawTags = Array.isArray(post.tagList) ? post.tagList
       : String(post.tag || '').split(',').map((x) => x.trim()).filter(Boolean);
+    // 上游 tagList 里偶尔夹 undefined / 空串，直接 map 会渲染出 #undefined
+    const tags = rawTags.map((x) => (x == null ? '' : String(x).trim())).filter(Boolean);
     const ppv = post.photoPostView || {};
     // 视频帖（type 4）没有 image/firstImageUrl，封面只在 videoPostView.videoInfo 里
     const vi = (post.videoPostView && post.videoPostView.videoInfo) || post.videoInfo || {};
@@ -743,8 +745,9 @@
       intro: bi.selfIntro || '',
       url: (bi.blogName || g.blogName) ? 'https://' + (bi.blogName || g.blogName) + '.lofter.com' : '',
     };
-    const tags = Array.isArray(p2.tagList) ? p2.tagList
+    const rawTags2 = Array.isArray(p2.tagList) ? p2.tagList
       : String(p2.tag || '').split(',').map((x) => x.trim()).filter(Boolean);
+    const tags2 = rawTags2.map((x) => (x == null ? '' : String(x).trim())).filter(Boolean);
     const isRec = !!(
       p2.citeParentPostId || p2.citeRootPostId || p2.reblog || p2.isReblog
       || (p2.blogId && author.id && String(p2.blogId) !== String(author.id))
@@ -758,8 +761,8 @@
       type: p2.type,
       title: decodeEntities(p2.title || ''),
       digest: stripHtml(p2.digest || p2.content || '').slice(0, 400),
-      tags,
-      ai: tags.some(isAiTag),
+      tags: tags2,
+      ai: tags2.some(isAiTag),
       time: p2.publishTime || 0,
       edited: Number(p2.modifyTime) || 0,
       author,
