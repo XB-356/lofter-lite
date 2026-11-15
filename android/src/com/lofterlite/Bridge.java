@@ -427,6 +427,120 @@ public class Bridge {
         });
     }
 
+    /**
+     * 保存图片到相册（Pictures/LOFTER Lite）。
+     * 结果通过 deliver(id, status, text) 回给前端：200 = 成功，text 是相册里的路径；500 = 失败。
+     */
+    @JavascriptInterface
+    public void saveImage(final String id, final String url, final String nameHint) {
+        if (url == null || url.length() == 0) {
+            deliver(id, 500, "没有图片地址");
+            return;
+        }
+        pool.execute(new Runnable() {
+            @Override
+            public void run() {
+                HttpURLConnection conn = null;
+                try {
+                    conn = (HttpURLConnection) new URL(url).openConnection();
+                    conn.setConnectTimeout(15000);
+                    conn.setReadTimeout(30000);
+                    conn.setRequestProperty("User-Agent", "LOFTER-Android 8.0.12 (23127PN0CC; Android 14; null) WIFI");
+                    int code = conn.getResponseCode();
+                    if (code >= 400) {
+                        deliver(id, 500, "图片下载失败（" + code + "）");
+                        return;
+                    }
+                    ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                    InputStream in = conn.getInputStream();
+                    byte[] buf = new byte[16384];
+                    int n;
+                    while ((n = in.read(buf)) > 0) bos.write(buf, 0, n);
+                    in.close();
+                    byte[] data = bos.toByteArray();
+                    if (data.length == 0) {
+                        deliver(id, 500, "图片是空的");
+                        return;
+                    }
+                    String mime = guessMime(url);
+                    String name = sanitizeName(nameHint);
+                    if (name == null) name = "lofter-" + System.currentTimeMillis();
+                    name = name + extFor(mime);
+                    String saved = saveToGallery(data, name, mime);
+                    if (saved == null) deliver(id, 500, "保存失败，可能存储空间不足或被系统拒绝");
+                    else deliver(id, 200, saved);
+                } catch (Exception e) {
+                    deliver(id, 500, "保存失败：" + e.getMessage());
+                } finally {
+                    if (conn != null) conn.disconnect();
+                }
+            }
+        });
+    }
+
+    private String saveToGallery(byte[] data, String name, String mime) {
+        try {
+            if (Build.VERSION.SDK_INT >= 29) {
+                android.content.ContentValues cv = new android.content.ContentValues();
+                cv.put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, name);
+                cv.put(android.provider.MediaStore.Images.Media.MIME_TYPE, mime);
+                // 编译目标是 android-23，RELATIVE_PATH / IS_PENDING 这两个常量在 29 才有，
+                // 这里直接用它们的字面值，避免为两个字符串把 SDK 里所有平台都下下来。
+                cv.put("relative_path", Environment.DIRECTORY_PICTURES + "/LOFTER Lite");
+                cv.put("is_pending", 1);
+                Uri uri = activity.getContentResolver().insert(
+                        android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv);
+                if (uri == null) return null;
+                OutputStream os = activity.getContentResolver().openOutputStream(uri);
+                os.write(data);
+                os.close();
+                cv.clear();
+                cv.put("is_pending", 0);
+                activity.getContentResolver().update(uri, cv, null, null);
+                return Environment.DIRECTORY_PICTURES + "/LOFTER Lite/" + name;
+            }
+            File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
+                    "LOFTER Lite");
+            if (!dir.exists() && !dir.mkdirs()) return null;
+            File out = new File(dir, name);
+            FileOutputStream fos = new FileOutputStream(out);
+            fos.write(data);
+            fos.close();
+            android.media.MediaScannerConnection.scanFile(activity,
+                    new String[]{out.getAbsolutePath()}, new String[]{mime}, null);
+            return Environment.DIRECTORY_PICTURES + "/LOFTER Lite/" + name;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static String guessMime(String url) {
+        String u = url.toLowerCase();
+        int q = u.indexOf('?');
+        if (q >= 0) u = u.substring(0, q);
+        if (u.endsWith(".png")) return "image/png";
+        if (u.endsWith(".webp")) return "image/webp";
+        if (u.endsWith(".gif")) return "image/gif";
+        return "image/jpeg";
+    }
+
+    private static String extFor(String mime) {
+        if ("image/png".equals(mime)) return ".png";
+        if ("image/webp".equals(mime)) return ".webp";
+        if ("image/gif".equals(mime)) return ".gif";
+        return ".jpg";
+    }
+
+    /** 文件名去掉非法字符与扩展名，太长的截断 */
+    private static String sanitizeName(String raw) {
+        if (raw == null) return null;
+        String s = raw.replaceAll("[\\\\/:*?\"<>|\\s]+", "-").trim();
+        int dot = s.lastIndexOf('.');
+        if (dot > 0) s = s.substring(0, dot);
+        if (s.length() > 40) s = s.substring(0, 40);
+        return s.length() == 0 ? null : s;
+    }
+
     /** 跟随网页主题切换状态栏颜色 */
     @JavascriptInterface
     public void setDark(final boolean dark) {

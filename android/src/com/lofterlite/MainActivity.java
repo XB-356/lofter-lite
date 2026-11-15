@@ -138,12 +138,31 @@ public class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
+        if (web != null) {
+            // 先问前端：图片查看器 / 底部面板这类浮层要自己吃掉返回键，
+            // 前端返回 1 表示已处理，返回 0 才真的退出这一页。
+            web.evaluateJavascript(
+                    "(function(){try{return String(window.__handleBack?window.__handleBack():0)}catch(e){return '0'}})()",
+                    new android.webkit.ValueCallback<String>() {
+                        @Override
+                        public void onReceiveValue(String value) {
+                            if (value != null && value.indexOf('1') >= 0) return;
+                            MainActivity.this.popPage();
+                        }
+                    });
+            return;
+        }
+        popPage();
+    }
+
+    private void popPage() {
         if (web != null && web.canGoBack()) {
             web.goBack();
         } else {
             super.onBackPressed();
         }
     }
+
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {

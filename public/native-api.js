@@ -1349,6 +1349,32 @@
     },
   };
 
+  // 保存图片：走原生 Bridge.saveImage，成功返回相册里的路径（下载与写相册都在 Java 侧做，
+  // 网页版没法直接写相册，app.js 会退化成 <a download> 或提示长按）。
+  function saveImage(url, name) {
+    return new Promise((resolve, reject) => {
+      if (!N.saveImage) return reject(new Error('当前版本不支持保存图片'));
+      const id = 'i' + (++seq);
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        reject(new Error('保存超时'));
+      }, 60000);
+      pending.set(id, {
+        parts: [],
+        resolve: (text) => resolve({ ok: true, path: text }),
+        reject,
+        timer,
+      });
+      try {
+        N.saveImage(id, url, name || '');
+      } catch (e) {
+        pending.delete(id);
+        clearTimeout(timer);
+        reject(e);
+      }
+    });
+  }
+
   window.__nativeApi = {
     loggedIn: function () { return N.isLoggedIn(); },
     checkLogin: probeLogin,
@@ -1359,6 +1385,7 @@
     },
     login: function () { N.login(); },
     copy: function (text) { if (N.copy) N.copy(String(text)); },
+    saveImage,
     switchAccount: function () {
       if (N.relogin) N.relogin();
       else { N.logout(); N.login(); }

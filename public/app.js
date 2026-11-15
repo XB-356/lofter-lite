@@ -2066,6 +2066,42 @@
     closeLightbox();
   });
   $('.lb-close', lightbox).addEventListener('click', closeLightbox);
+  $('#lb-save')?.addEventListener('click', async () => {
+    const i = Math.round(lbTrack.scrollLeft / (lbTrack.clientWidth || 1));
+    const cur = lbImgs[Math.max(0, Math.min(i, lbImgs.length - 1))];
+    if (!cur) return;
+    const name = cur.name || 'lofter-' + (cur.id || Date.now());
+    if (nativeApi && nativeApi.saveImage) {
+      toast('正在保存…');
+      try {
+        const r = await nativeApi.saveImage(cur.url, name);
+        toast('已保存到相册：' + r.path);
+      } catch (err) {
+        toast(err.message || '保存失败');
+      }
+      return;
+    }
+    // 网页版没法直接写相册：能下载就下载，否则提示长按
+    try {
+      const a = document.createElement('a');
+      a.href = cur.url;
+      a.download = name + '.jpg';
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      toast('已开始下载');
+    } catch (e) {
+      toast('长按图片可以保存');
+    }
+  });
+  // 安卓返回键先交给前端：图片查看器开着就只关掉它，不退出页面
+  window.__handleBack = function () {
+    if (!lightbox.hidden) { closeLightbox(); return 1; }
+    const sheet = document.getElementById('sheet');
+    if (sheet && !sheet.hidden) { closeSheet(); return 1; }
+    return 0;
+  };
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !lightbox.hidden) closeLightbox();
   });
