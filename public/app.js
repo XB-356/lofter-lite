@@ -1385,9 +1385,10 @@
     `);
     $('#btn-back').addEventListener('click', back);
 
-    viewEl.innerHTML = `<div class="feed"><div class="masonry" id="masonry"></div><div class="load-more" id="loadmore"></div><div id="sentinel"></div></div>`;
-    const m = new Masonry($('#masonry'), colsFor());
-    appendSkeletons(m, 6);
+    viewEl.innerHTML = feedShell('blog');
+    bindCardMode();
+    const m = $('#masonry') ? new Masonry($('#masonry'), colsFor()) : null;
+    if (m) appendSkeletons(m, 6);
 
     let offset = 0, loading = false, done = false, first = true;
     const token = navId;
@@ -1487,10 +1488,10 @@
             }).catch(() => {});
           }
         }
-        $('#masonry').querySelectorAll('.skeleton').forEach((s) => s.remove());
+        $('#masonry, #big-list').querySelectorAll('.skeleton').forEach((s) => s.remove());
         if (!data.posts.length) { done = true; if (!offset) $('#loadmore').textContent = '这位博主还没有公开作品'; }
         else {
-          for (const p of data.posts) if (!isBlockedPost(p)) m.add(cardEl(p));
+          for (const p of data.posts) if (!isBlockedPost(p)) addPostToFeed(m, p);
           bindImages(viewEl);
           const nextOff = nextPageOffset(data, offset);
           if (nextOff === null) done = true;
@@ -1500,7 +1501,8 @@
         $('#loadmore').textContent = done ? '' : '';
       } catch (err) {
         if (token !== navId) return;
-        if (!offset) viewEl.querySelector('.masonry').innerHTML = emptyEl(err.message, false);
+        const box = viewEl.querySelector('.masonry') || viewEl.querySelector('.big-list');
+        if (!offset && box) box.innerHTML = emptyEl(err.message, false);
       } finally { loading = false; }
     }
     const io = new IntersectionObserver((en) => { if (en.some((x) => x.isIntersecting)) load(); }, { rootMargin: '700px 0px' });
@@ -1834,9 +1836,10 @@
       viewEl.innerHTML = `<div style="padding:16px">${emptyEl('合集需要在 App 内查看', false)}</div>`;
       return;
     }
-    viewEl.innerHTML = `<div class="feed"><div class="masonry" id="masonry"></div><div class="load-more" id="loadmore"></div><div id="sentinel" style="height:1px"></div></div>`;
-    const m = new Masonry($('#masonry'), colsFor());
-    appendSkeletons(m, 6);
+    viewEl.innerHTML = feedShell('collection');
+    bindCardMode();
+    const m = $('#masonry') ? new Masonry($('#masonry'), colsFor()) : null;
+    if (m) appendSkeletons(m, 6);
     const token = navId;
     let offset = 0, done = false, loading = false, coll = null;
 
@@ -1846,7 +1849,7 @@
       try {
         const d = await api('/api/collection', { name, blogId, collectionId, offset });
         if (token !== navId) return;
-        $('#masonry').querySelectorAll('.skeleton').forEach((n) => n.remove());
+        $('#masonry, #big-list').querySelectorAll('.skeleton').forEach((n) => n.remove());
         if (d.collection && !coll && d.collection.name) {
           coll = d.collection;
           const title = $('.h-title');
@@ -1855,9 +1858,10 @@
         const posts = (d.posts || []).filter((p) => !isBlockedPost(p));
         if (!posts.length) {
           done = true;
-          if (!offset) $('#masonry').innerHTML = `<div class="empty"><div class="big">📚</div><p>这个合集还没有作品</p></div>`;
+          const box = $('#masonry') || $('#big-list');
+          if (!offset && box) box.innerHTML = `<div class="empty"><div class="big">📚</div><p>这个合集还没有作品</p></div>`;
         } else {
-          for (const p of posts) m.add(cardEl(p));
+          for (const p of posts) addPostToFeed(m, p);
           bindImages(viewEl);
           currentFeedExtra.push(...posts);
         }
@@ -1867,7 +1871,7 @@
         if (more) more.textContent = done ? (coll && coll.postCount ? '共 ' + num(coll.postCount) + ' 篇' : '') : '已显示 ' + num(offset) + ' 篇 · 继续下拉加载更多';
       } catch (err) {
         if (token !== navId) return;
-        $('#masonry').querySelectorAll('.skeleton').forEach((n) => n.remove());
+        $('#masonry, #big-list').querySelectorAll('.skeleton').forEach((n) => n.remove());
         if (!offset) {
           viewEl.innerHTML = `<div style="padding:16px">${emptyEl(err.message || '合集加载失败', true)}</div>`;
           viewEl.querySelector('.retry')?.addEventListener('click', () => render());
