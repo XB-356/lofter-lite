@@ -120,3 +120,12 @@ test/                node:test：server(HTTP) / lofter(归一化) / cache / live
 - **改带中文的 `.java` / `.cs` / `.ps1` 只能用 read/edit 工具**：PowerShell 5.1 的 `Get-Content`/`Set-Content` 按 GBK 解码，会把 UTF-8 中文注释整段毁掉（曾经把 `Bridge.java` 从 27KB 变成乱码，只能 `git checkout` 重来）。
 - 时间戳：`post.publishTime` → `post.time`，`post.modifyTime` → `post.edited`（`modifyTime=0` 表示没改过）。详情页显示「发布于 yyyy-mm-dd」，改过的再加「· 编辑于 …」；关注页大卡片底部用 `since(post.time)` 显示相对时间。
 - 请求日志会打印所有非 `/api/` 路径；接口出错打印 `[api]` 行带状态码和耗时，排障先看它。
+
+- **评论排序没有上游参数**：`comment/l1/page.json` 的 `&order=` / `&sort=` 传什么都没用，响应里的 `data.hotList`（热门 10 条）与 `data.list`（按时间）是两批不同数据。评论区的「热门 / 最新」tab 就是分别用这两批，别再去试排序参数。
+- **官方功能评论要过滤**：一页里常常大半是 `[更新求踢]` 这种整条只有方括号标记的评论（官方 App 的功能按钮），用户看不到正文。两份归一化都用 `/^(\[[^\]\s]{1,12}\][\s　]*)+$/` 判定，命中且没有 `images` 就返回 `null`。
+- **图片评论的图在 `images[]`**，`content` 里只有 `[图片]` 占位；按顺序替换，多出来的补末尾。图片要用 `display:block` 单独占一行（用户明确要求：文字和图不要挤在一起）。
+- **划线评**：上游会在评论对象里带被划住的原文。已按 `quoteContent / quoteText / targetContent / highlightContent / originContent / markContent` 依次取第一个非空的（`quoteOf`），有就在评论上方显示引用块 + 「划线评」角标。实测手上没有一条真划线评，字段名还没被真数据确认过——拿到样例要回填。
+- **草稿 / 定时发布不能显示**：`isPublished === false`、`queuePostType > 0`、或没有 `publishTime` 的都算草稿（`post.draft`），归一化列表时统一滤掉。
+- **付费 / 粮票作品不再由服务端丢弃**：列表照常返回，带 `locked` 标记；是否隐藏由前端 `store.settings.hideLocked`（默认 true）决定，过滤统一走 `isBlockedPost()`。
+- **剪贴板作品链接**：`https://<博客名>.lofter.com/post/<blogId 十六进制>_<postId 十六进制>`，两段十六进制就是数字 ID（例 `31fc1282_34e1e4981` → 838603394 / 14195509633）。`parseInt(hex)` 还原后走 `#/post/<blogId>/<postId>`；详情页 HTML 是 SPA 壳，抓不到 postId，别去解析 HTML。读剪贴板必须在前台（Android 10+），所以检查点放在启动后和 `visibilitychange` 回前台。
+- **改含中文的文件不要用 PowerShell 的 `Get-Content`/`Set-Content` 回写**（PS 5.1 按 GBK 解码，中文注释会变成 `杩欑瘒...` 这种乱码，`node --check` 直接报 `Invalid or unexpected token`）。一律用 read/edit 工具；真被写坏了就 `git checkout -- <file>` 重来。
