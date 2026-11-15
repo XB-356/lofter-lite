@@ -628,6 +628,15 @@
     a.innerHTML = icon('export') + '<span>导入 / 导出</span>';
     viewEl.appendChild(a);
   }
+  // 上游分页的坑：翻到底时 nextOffset 可能是 -1（再请求一次会从第一页开始），
+  // 也可能原地不动。这两种都当成「没有下一页」，否则瀑布流会反复重复同一批作品。
+  function nextPageOffset(data, current) {
+    if (!data || data.hasMore === false) return null;
+    const next = Number(data.nextOffset);
+    if (!Number.isFinite(next) || next < 0 || next <= current) return null;
+    return next;
+  }
+
   function fmtDate(ts) {
     if (!ts) return '';
     const d = new Date(ts);
@@ -1205,6 +1214,7 @@
 
     let offset = 0, loading = false, done = false;
     let shown = 0, emptyPages = 0, pumped = 0;
+    const seen = new Set(); // 跨页去重：上游翻到底会给重复页，同一篇作品只加一次
     const token = navId;
 
     // 作品被「标签屏蔽 / 屏蔽用户」过滤掉以后只剩几张卡时，页面比屏幕还短，
@@ -1233,9 +1243,17 @@
         } else {
           currentFeedExtra.push(...data.posts);
           if (currentFeedExtra.length > 200) currentFeedExtra = currentFeedExtra.slice(-200);
-          for (const p of data.posts) if (!isBlockedPost(p)) { m.add(cardEl(p)); shown++; }
+          for (const p of data.posts) {
+            if (!p || seen.has(String(p.id))) continue;
+            seen.add(String(p.id));
+            if (isBlockedPost(p)) continue;
+            m.add(cardEl(p));
+            shown++;
+          }
+          const nextOff = nextPageOffset(data, offset);
+          if (nextOff === null) done = true;
+          else offset = nextOff;
           bindImages(viewEl);
-          offset = data.nextOffset;
         }
         // 作品全被「标签屏蔽 / 屏蔽用户」过滤掉时页面会剩下空白：先把后面几页翻完，
         // 翻完还是空的就给一句说明，别让用户对着空页面以为卡住了
@@ -1382,7 +1400,14 @@
         }
         $('#masonry').querySelectorAll('.skeleton').forEach((s) => s.remove());
         if (!data.posts.length) { done = true; if (!offset) $('#loadmore').textContent = '这位博主还没有公开作品'; }
-        else { for (const p of data.posts) if (!isBlockedPost(p)) m.add(cardEl(p)); bindImages(viewEl); offset = data.nextOffset; currentFeedExtra.push(...data.posts); }
+        else {
+          for (const p of data.posts) if (!isBlockedPost(p)) m.add(cardEl(p));
+          bindImages(viewEl);
+          const nextOff = nextPageOffset(data, offset);
+          if (nextOff === null) done = true;
+          else offset = nextOff;
+          currentFeedExtra.push(...data.posts);
+        }
         $('#loadmore').textContent = done ? '' : '';
       } catch (err) {
         if (token !== navId) return;
