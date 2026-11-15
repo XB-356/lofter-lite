@@ -148,6 +148,8 @@
       profile: null, subscribedTags: [], accountSyncAt: 0, tagSeen: {}, followRecommend: true,
       // 粮票 / 付费解锁的作品读不到正文，默认不进流
       hideLocked: true,
+      // 拉黑 / 标签屏蔽是否同时写进账号（写操作，有风控风险，默认关）
+      syncBlockToAccount: false,
     }, loadLS('settings', {})),
     saved: loadLS('saved', []),
     history: loadLS('history', []),
@@ -565,10 +567,10 @@
   }
   // 「屏蔽」中心：屏蔽用户 / 屏蔽标签 / 关键词 / 拉黑用户，四个页面共用同一套顶栏 tab
   const BLOCK_TABS = [
-    { key: 'muted', label: '屏蔽用户', href: '#/muted' },
-    { key: 'tags', label: '屏蔽标签', href: '#/blocked' },
+    { key: 'muted', label: '用户', href: '#/muted' },
+    { key: 'tags', label: '标签', href: '#/blocked' },
     { key: 'keywords', label: '关键词', href: '#/keywords' },
-    { key: 'black', label: '拉黑用户', href: '#/blacklist' },
+    { key: 'black', label: '拉黑', href: '#/blacklist' },
   ];
   function blockTabs(active) {
     return `<div class="blk-tabs">${BLOCK_TABS.map((t) =>
@@ -580,6 +582,51 @@
       + (store.settings.blockedKeywords || []).filter(Boolean).length
       + mutedBlogList().length
       + blockedBlogList().length;
+  }
+  // 屏蔽页顶部那行「同步到账号」开关（拉黑 / 标签屏蔽才会真的写账号）
+  function acctSyncRow() {
+    const on = store.settings.syncBlockToAccount === true;
+    return `<button class="list-row blk-acct" id="acct-sync">${icon('shield')}同步到账号<span class="val" id="acct-sync-val">${on ? '开' : '关'}</span></button>`;
+  }
+  const ACCT_SYNC_TIP = '开启后，在本机「拉黑」某人或「屏蔽」某个标签时，会同时写进你的 LOFTER 账号：\n\n'
+    + '· 会影响你在官方 App / 网页端看到的内容，不只是这台设备\n'
+    + '· 属于写操作，短时间内连续好几个可能在服务端触发人机验证（滑块）\n\n'
+    + '确定开启吗？';
+  // 把本机的一次拉黑 / 标签屏蔽同步到账号（失败只提示，不影响本机操作）
+  async function accountSync(kind, ref, on) {
+    if (store.settings.syncBlockToAccount !== true) return;
+    try {
+      if (kind === 'tag') await api('/api/account-shield-tag', { tag: ref, on: on ? '1' : '0' });
+      else if (kind === 'block') await api('/api/account-block-blog', { blogId: ref, on: on ? '1' : '0' });
+      else if (kind === 'mute') await api('/api/account-shield-blog', { blogId: ref, on: on ? '1' : '0' });
+    } catch (e) {
+      toast('本机已生效，但同步到账号失败：' + (e.message || '未知错误'));
+    }
+  }
+  // 拉黑写账号需要数字 blogId：优先用本机条目里已有的，找不到就用搜索接口按名字精确匹配
+  async function resolveBlogId(name) {
+    const clean = String(name || '').trim();
+    if (!clean) return 0;
+    const known = blockedBlogList().find((b) => b.name === clean && b.id);
+    if (known) return Number(known.id);
+    try {
+      const r = await api('/api/search-blogs', { q: clean });
+      const hit = (r.list || []).find((b) => b.name === clean);
+      return hit && hit.id ? Number(hit.id) : 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+  const BLOCK_ROUTES = ['/muted', '/blocked', '/keywords', '/blacklist'];
+  // 四个屏蔽子页右下角统一一个「导入 / 导出」小长条（不再塞进我的页和每个子页列表里）
+  function ensureBlockIoBar() {
+    if (!viewEl || document.getElementById('blk-io')) return;
+    const a = document.createElement('a');
+    a.className = 'blk-io';
+    a.id = 'blk-io';
+    a.href = '#/block-io';
+    a.innerHTML = icon('export') + '<span>导入 / 导出</span>';
+    viewEl.appendChild(a);
   }
   function fmtDate(ts) {
     if (!ts) return '';
@@ -628,6 +675,7 @@
     list.push(tag);
     store.settings.blockedTags = list;
     store.saveSettings();
+    accountSync('tag', tag, true);
     toast('已屏蔽 #' + tag);
     $$('.card').forEach((c) => {
       const p = findPost(c.dataset.id);
@@ -2929,7 +2977,6 @@
       <div class="list-card">
         <a class="list-row" href="#/tags">${icon('tag')}兴趣标签<span class="val">${tags.length ? esc(tags.slice(0, 3).join(' · ')) : '使用默认推荐'} ${icon('chevron')}</span></a>
         <a class="list-row" href="#/muted">${icon('shield')}屏蔽<span class="val">${blockTotal()} 项 ${icon('chevron')}</span></a>
-        <a class="list-row" href="#/block-io">${icon('export')}导入 / 导出屏蔽<span class="val">${icon('chevron')}</span></a>
         <button class="list-row" id="toggle-locked">${icon('eye')}隐藏粮票 / 付费作品<span class="val" id="locked-val">${store.settings.hideLocked !== false ? '开' : '关'}</span></button>
         <button class="list-row" id="theme-row">${icon('palette')}外观<span class="val" id="theme-val">${themeLabel()}</span></button>
         <button class="list-row" id="clear-cache">${icon('trash')}<span class="danger">清除本地记录</span><span class="val"></span></button>
@@ -3128,6 +3175,7 @@
     const list = store.settings.blockedTags || [];
     viewEl.innerHTML = `
       ${blockTabs('tags')}
+      ${acctSyncRow()}
       <div style="padding:14px 16px 40px">
         <p style="color:var(--sub);font-size:12.5px;line-height:1.7;margin:0 0 14px">
           屏蔽后，推荐、话题、关注流里带这些标签的内容会自动隐藏。长按任意卡片或标签也能快速屏蔽。
@@ -3140,7 +3188,6 @@
         <div class="chips" style="margin-top:16px" id="blk-list">
           ${list.length ? list.map((t) => `<button class="chip on" data-unblock="${esc(t)}">#${esc(t)} ✕</button>`).join('') : '<div class="cmt-empty" style="padding:24px 0">还没有屏蔽任何标签</div>'}
         </div>
-        <a class="list-row" href="#/block-io" style="margin-top:16px">${icon('export')}导入 / 导出屏蔽<span class="val">${icon('chevron')}</span></a>
         ${store.settings.lastSyncInfo ? `<p class="blk-sync-info">${esc(store.settings.lastSyncInfo)}</p>` : ''}
       </div>`;
     bindBlockSync(viewBlocked);
@@ -3158,6 +3205,7 @@
       const t = b.dataset.unblock;
       store.settings.blockedTags = (store.settings.blockedTags || []).filter((x) => x !== t);
       store.saveSettings();
+      accountSync('tag', t, false);
       toast('已取消屏蔽 #' + t);
       viewBlocked();
     });
@@ -3242,6 +3290,7 @@
     const list = mutedBlogList();
     viewEl.innerHTML = `
       ${blockTabs('muted')}
+      ${acctSyncRow()}
       <div style="padding:14px 16px 40px" id="muted-wrap">
         <p style="color:var(--sub);font-size:12.5px;line-height:1.7;margin:0 0 14px">
           屏蔽只作用于<span style="color:var(--text)">这台设备</span>：推荐、话题、关注流里 TA 的作品会自动隐藏，不会通知对方，也不会改动你的 LOFTER 账号。
@@ -3250,7 +3299,6 @@
           ${icon('user')}
           <input id="muted-input" placeholder="输入博主域名，回车添加" maxlength="64">
         </div>
-        <a class="list-row" href="#/block-io" style="margin-top:12px">${icon('export')}导入 / 导出屏蔽<span class="val">${icon('chevron')}</span></a>
         <div style="margin-top:16px" id="muted-list">
           ${list.length ? list.map((b) => {
             const key = muteKeyOf(b);
@@ -3301,6 +3349,7 @@
     const list = (store.settings.blockedKeywords || []).filter(Boolean);
     viewEl.innerHTML = `
       ${blockTabs('keywords')}
+      ${acctSyncRow()}
       <div style="padding:14px 16px 40px" id="kw-wrap">
         <p style="color:var(--sub);font-size:12.5px;line-height:1.7;margin:0 0 14px">
           标题、摘要或标签里出现这些词的<span style="color:var(--text)">作品</span>会自动隐藏（只作用于这台设备）。
@@ -3355,6 +3404,7 @@
     const list = blockedBlogList();
     viewEl.innerHTML = `
       ${blockTabs('black')}
+      ${acctSyncRow()}
       <div style="padding:14px 16px 40px" id="blk-blog-wrap">
         <p style="color:var(--sub);font-size:12.5px;line-height:1.7;margin:0 0 14px">
           这里是<span style="color:var(--text)">账号级黑名单</span>（来自 LOFTER 账号，会同步到其它客户端）。
@@ -3364,7 +3414,7 @@
           ${icon('user')}
           <input id="blk-blog-input" placeholder="输入博主域名，回车加入本机名单" maxlength="64">
         </div>
-        <p style="color:var(--sub);font-size:11.5px;line-height:1.6;margin:8px 0 0">在这里手动添加只记在本机；要真正拉黑对方，请在 LOFTER 官方客户端或网页里操作。</p>
+        <p style="color:var(--sub);font-size:11.5px;line-height:1.6;margin:8px 0 0">在这里手动添加默认只记在本机；开启上面的「同步到账号」后，能解析到 blogId 的博主会同时写进账号黑名单。</p>
         <div style="margin-top:12px" id="blk-blog-list">
           ${list.length ? list.map((b) => `<div class="blk-blog">
             <a class="blk-ava" href="#/blog/${encodeURIComponent(b.name)}" aria-label="查看主页">
@@ -3391,15 +3441,26 @@
       store.saveSettings();
       toast('已加入黑名单：' + v);
       viewBlacklist();
+      if (store.settings.syncBlockToAccount === true) {
+        resolveBlogId(v).then((id) => {
+          if (!id) { toast('本机已拉黑；账号里没找到这个博主，未同步'); return; }
+          const cur = blockedBlogList();
+          const hit = cur.find((b) => b.name === v);
+          if (hit && !hit.id) { hit.id = id; store.settings.blockedBlogs = cur; store.saveSettings(); }
+          accountSync('block', id, true);
+        });
+      }
     });
     wrap.addEventListener('click', (e) => {
       const bb = e.target.closest('[data-unblock-blog]');
       if (!bb) return;
       const n = bb.dataset.unblockBlog;
+      const entry = blockedBlogList().find((x) => x.name === n);
       store.settings.blockedBlogs = blockedBlogList().filter((x) => x.name !== n);
       store.saveSettings();
       toast('已移出黑名单：' + n);
       viewBlacklist();
+      if (entry && entry.id) accountSync('block', entry.id, false);
     });
   }
 
@@ -3664,6 +3725,22 @@
       console.error(err);
       if (id === navId) viewEl.innerHTML = emptyEl(err.message || '出错了', true);
     } finally {
+      // 屏蔽中心四个子页：右下角统一的导入 / 导出入口 + 顶部「同步到账号」开关
+      if (BLOCK_ROUTES.indexOf(path) >= 0 && id === navId) {
+        ensureBlockIoBar();
+        const sw = document.getElementById('acct-sync');
+        if (sw) {
+          sw.addEventListener('click', () => {
+            const now = store.settings.syncBlockToAccount === true;
+            if (!now && !confirm(ACCT_SYNC_TIP)) return;
+            store.settings.syncBlockToAccount = !now;
+            store.saveSettings();
+            const val = document.getElementById('acct-sync-val');
+            if (val) val.textContent = !now ? '开' : '关';
+            toast(!now ? '已开启：拉黑与标签屏蔽会同步到账号' : '已关闭同步到账号');
+          });
+        }
+      }
       // 视图函数返回时内容可能还在陆续进，restoreScroll 会继续追几轮
       restoreScroll(id, routeY);
     }
