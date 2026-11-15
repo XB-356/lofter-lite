@@ -1521,7 +1521,7 @@
     });
 
     // 详情页的滚动位置也由全局 restoreScroll 处理（从评论返回时能回到原处）
-    let liked = !!post.liked, following = false;
+    let liked = !!post.liked, following = !!post.followed;
     if (post.author && mutedBlogList().some((x) => x.name === post.author.name)) {
       $('#act-mute')?.classList.add('on');
       const s = $('#act-mute')?.querySelector('span');
@@ -1532,6 +1532,12 @@
       likeBtn.classList.add('on');
       const s = likeBtn.querySelector('span');
       if (s) s.textContent = '已喜欢';
+    }
+    const followBtn = $('#act-follow');
+    if (following && followBtn) {
+      followBtn.classList.add('on');
+      const s = followBtn.querySelector('span');
+      if (s) s.textContent = '已关注';
     }
     likeBtn?.addEventListener('click', async () => {
       // 点赞要打在「原博主」身上：转发帖的 author 是转发者，用 originBlogId 才对

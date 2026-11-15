@@ -249,8 +249,10 @@
       dur: (video && video.duration) || base.dur || 0,
       wordCount: post.wordCount || post.totalWordCount || 0,
       ipLocation: post.ipLocation || '',
-      // 详情响应里带 user 状态：liked / shared / subscribed（用来把「喜欢」按钮点亮）
+      // 详情响应里带用户状态：liked / shared / subscribed / followed
+      // followed 用来让详情页的「关注」按钮一进来就显示「已关注」
       liked: !!(entry.liked || post.liked),
+      followed: !!(entry.followed || post.followed),
     });
   }
 
