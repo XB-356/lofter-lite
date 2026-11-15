@@ -128,6 +128,34 @@ test('normalizeComment 转义正文、替换表情、保留换行', () => {
   assert.equal(lofter.normalizeComment(null), null);
 });
 
+test('normalizeComment 过滤官方功能评论，保留划线评的原文', () => {
+  const official = lofter.normalizeComment({ id: 1, content: '[更新求踢]' });
+  assert.equal(official, null, '[更新求踢] 这类只有标记的评论不显示');
+  const multi = lofter.normalizeComment({ id: 2, content: '[更新求踢] [催更]' });
+  assert.equal(multi, null, '多个标记连在一起也算功能评论');
+  const real = lofter.normalizeComment({ id: 3, content: '更新求踢！写得太好了' });
+  assert.ok(real, '带正文的评论要保留');
+
+  const quoted = lofter.normalizeComment({
+    id: 4,
+    content: '这段好',
+    quoteContent: '当月光落在旧城墙上的时候',
+    publisherBlogInfo: { blogName: 'x', blogNickName: 'X' },
+  });
+  assert.equal(quoted.quote, '当月光落在旧城墙上的时候');
+});
+
+test('normalizePost 标出草稿，blogHome 不返回草稿', async () => {
+  const draft = lofter.normalizePost({ post: { id: 1, title: '草稿', isPublished: false, publishTime: 0 } });
+  assert.equal(draft.draft, true);
+  const normal = lofter.normalizePost({ post: { id: 2, title: '正常', publishTime: 1700000000000 } });
+  assert.equal(normal.draft, false);
+
+  const home = await mock.blogHome('lenscape', { offset: 0 });
+  assert.ok(home.posts.length > 0);
+  assert.ok(home.posts.every((p) => !p.draft), '草稿不该出现在主页列表里');
+});
+
 test('mock 详情页正文在经过 sanitizeHtml 后是安全的', async () => {
   const detail = await mock.postDetail(5, 900001);
   assert.ok(detail.content.length > 0);

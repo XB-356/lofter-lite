@@ -315,6 +315,20 @@
     return '<img class="emote cmt-img" src="' + escText(sized) + '" alt="">';
   }
 
+  // 官方 App 的「功能型评论」：整条只有 [更新求踢] 这类方括号标记，没有实际内容
+  const OFFICIAL_CMT_RE = /^(\[[^\]\s]{1,12}\][\s　]*)+$/;
+
+  // 划线评：用户选中正文某段文字后发的评论，上游会把选中的原文带回来
+  function quoteOf(c) {
+    const q = c.quoteContent || c.quoteText || c.targetContent
+      || c.highlightContent || c.originContent || c.markContent || '';
+    return String(q || '').trim();
+  }
+
+  function plainText(html) {
+    return String(html || '').replace(/<[^>]*>/g, '').replace(/&\w+;/g, ' ').trim();
+  }
+
   function normComment(c) {
     if (!c) return null;
     const b = c.publisherBlogInfo || {};
@@ -326,15 +340,18 @@
     let pi = 0;
     content = content.replace(/\[图片\]/g, () => (pi < pics.length ? commentPic(pics[pi++]) : ''));
     if (pi < pics.length) content += pics.slice(pi).map(commentPic).join('');
+    // 只有 [更新求踢] 这类官方功能评论、又没有配图，就别显示了
+    if (!pics.length && OFFICIAL_CMT_RE.test(plainText(c.content))) return null;
     return {
       id: c.id,
       author: { name: b.blogName || '', nick: b.blogNickName || 'LOFTER 用户', avatar: b.bigAvaImg || '' },
       content,
+      quote: quoteOf(c),
       time: c.publishTime || 0,
       likes: c.likeCount || 0,
       ip: c.ipLocation || '',
       l2Count: c.l2Count || 0,
-      l2: (c.l2Comments || []).map(normComment),
+      l2: (c.l2Comments || []).map(normComment).filter(Boolean),
     };
   }
   function escText(s) {

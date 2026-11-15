@@ -123,6 +123,11 @@ async function comments(blogId, postId, offset = 0) {
   const start = offset * 6;
   const list = [];
   for (let i = 0; i < 6; i++) list.push(data.rawComment(base * 100 + start + i));
+  // 第二页塞一条「官方功能评论」和一条「划线评」，方便离线验证这两条过滤/渲染逻辑
+  if (offset === 1) {
+    list.push(data.rawComment(base * 100 + 501, { official: true }));
+    list.push(data.rawComment(base * 100 + 502, { quote: true }));
+  }
   const next = start + 6 >= 18 ? -1 : offset + 1;
   const hot = offset === 0 ? [data.rawComment(base * 100 + 999, { hot: true })] : [];
   return {

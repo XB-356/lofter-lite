@@ -1995,6 +1995,7 @@
       <img class="cmt-ava" src="${esc(c.author.avatar)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
       <div class="cmt-main">
         <div class="cmt-who"><b>${esc(c.author.nick)}</b><span>${since(c.time)}${c.ip ? ' · ' + esc(c.ip) : ''}</span></div>
+        ${c.quote ? `<div class="cmt-quote"><span class="cmt-quote-tag">划线评</span><i>${esc(c.quote)}</i></div>` : ''}
         <div class="cmt-text">${c.content}</div>
         <div class="cmt-foot">
           ${c.likes ? `<span>♡ ${num(c.likes)}</span>` : ''}

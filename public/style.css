@@ -870,12 +870,28 @@ body.immersive #app { padding-bottom: 0; }
 .cmt-who span { font-size: 10.5px; color: var(--sub); }
 .cmt-text { font-size: 13.5px; line-height: 1.65; margin-top: 3px; word-break: break-word; }
 .cmt-text .emote { display: inline-block; width: 20px; height: 20px; vertical-align: -4px; margin: 0 1px; }
-/* 评论里带的大图（图片评论）：按缩略图显示，点开再看大图 */
+/* 评论里带的大图（图片评论）：按缩略图显示，点开再看大图；图片单独占一行，别把文字挤到旁边 */
 .cmt-text .emote.cmt-img {
+  display: block;
   width: auto; height: auto; max-width: 62%; max-height: 120px;
-  border-radius: 8px; vertical-align: middle; margin: 4px 0;
+  border-radius: 8px; margin: 6px 0 2px;
   background: var(--bg-soft); cursor: zoom-in;
 }
+/* 划线评：先展示被划住的原文，再是评论本身 */
+.cmt-quote {
+  margin-top: 5px; padding: 6px 9px;
+  border-left: 2px solid var(--accent);
+  background: var(--bg-soft);
+  border-radius: 0 8px 8px 0;
+  font-size: 12px; line-height: 1.6; color: var(--text-2);
+}
+.cmt-quote-tag {
+  display: inline-block; margin-right: 6px; padding: 0 6px;
+  border-radius: 99px; background: var(--accent-weak); color: var(--accent);
+  font-size: 10px; font-weight: 700; font-style: normal; letter-spacing: 0.2px;
+  vertical-align: 1px;
+}
+.cmt-quote i { font-style: normal; }
 .cmt-foot { font-size: 11px; color: var(--sub); margin-top: 4px; }
 .cmt-replies {
   margin-top: 7px;

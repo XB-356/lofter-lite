@@ -152,9 +152,32 @@ function rawDetail(id, tag) {
   };
 }
 
-function rawComment(id, { hot = false } = {}) {
+function rawComment(id, { hot = false, official = false, quote = false } = {}) {
   const h = hash(`c${id}`);
   const author = AUTHORS[h % AUTHORS.length];
+  if (official) {
+    // 官方 App 的「功能型评论」：整条只有方括号标记，应当被过滤掉
+    return {
+      id,
+      content: '[更新求踢]',
+      publishTime: 1750000000000 - (h % 200) * 60000,
+      likeCount: 0,
+      ipLocation: '浙江',
+      publisherBlogInfo: { blogName: author.name, blogNickName: author.nick, bigAvaImg: img(96, 96, author.name) },
+    };
+  }
+  if (quote) {
+    // 划线评：选中正文某段后发的评论，上游会带被选中的原文
+    return {
+      id,
+      content: '这句写得太好了，我一口气读了三条街。',
+      quoteContent: '当月光落在旧城墙上的时候，整条街都安静了下来。',
+      publishTime: 1750000000000 - (h % 200) * 60000,
+      likeCount: 12,
+      ipLocation: '上海',
+      publisherBlogInfo: { blogName: author.name, blogNickName: author.nick, bigAvaImg: img(96, 96, author.name) },
+    };
+  }
   return {
     id,
     content: hot ? `这是热评 #${id}：很喜欢这组图，色调很安静。` : `评论 ${id}：第 ${h % 30} 次来看更新了。\n第二行测试换行。`,
