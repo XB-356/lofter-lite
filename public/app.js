@@ -144,7 +144,7 @@
   const store = {
     settings: Object.assign({
       theme: 'auto', tags: [], reduceMotion: false,
-      feedMode: 'recommend', onlyTag: '', blockedTags: [], blockedBlogs: [], mutedBlogs: [],
+      feedMode: 'recommend', onlyTag: '', blockedTags: [], blockedBlogs: [], mutedBlogs: [], blockedKeywords: [],
       profile: null, subscribedTags: [], accountSyncAt: 0, tagSeen: {}, followRecommend: true,
       // 粮票 / 付费解锁的作品读不到正文，默认不进流
       hideLocked: true,
@@ -574,6 +574,12 @@
     if (store.settings.hideLocked !== false && p.locked) return true;
     const b = store.settings.blockedTags || [];
     if (b.length && (p.tags || []).some((t) => b.indexOf(t) >= 0)) return true;
+    // 关键词屏蔽：标题 / 摘要 / 标签里出现任一关键词就隐藏
+    const kws = (store.settings.blockedKeywords || []).filter(Boolean);
+    if (kws.length) {
+      const hay = ((p.title || '') + ' ' + (p.digest || '') + ' ' + (p.tags || []).join(' ')).toLowerCase();
+      if (kws.some((k) => hay.indexOf(String(k).toLowerCase()) >= 0)) return true;
+    }
     const a = p.author || {};
     const mb = mutedBlogList();
     if (mb.length && (a.name || a.nick)) {
@@ -2846,6 +2852,7 @@
       <div class="list-card">
         <a class="list-row" href="#/tags">${icon('tag')}兴趣标签<span class="val">${tags.length ? esc(tags.slice(0, 3).join(' · ')) : '使用默认推荐'} ${icon('chevron')}</span></a>
         <a class="list-row" href="#/blocked">${icon('shield')}标签屏蔽<span class="val">${(store.settings.blockedTags || []).length} 个 ${icon('chevron')}</span></a>
+        <a class="list-row" href="#/keywords">${icon('filter')}关键词屏蔽<span class="val">${(store.settings.blockedKeywords || []).filter(Boolean).length} 个 ${icon('chevron')}</span></a>
         <a class="list-row" href="#/muted">${icon('user')}屏蔽用户<span class="val">${mutedBlogList().length} 位 ${icon('chevron')}</span></a>
         <a class="list-row" href="#/blacklist">${icon('shield')}拉黑名单<span class="val">${blockedBlogList().length} 位 ${icon('chevron')}</span></a>
         <a class="list-row" href="#/block-io">${icon('export')}导入 / 导出屏蔽<span class="val">${icon('chevron')}</span></a>
@@ -3136,6 +3143,9 @@
           ${icon('user')}
           <input id="muted-input" placeholder="输入博主域名，回车添加" maxlength="64">
         </div>
+        <button class="btn" id="muted-sync" style="width:100%;margin-top:12px">${icon('refresh')} 从账号同步「不想看 TA 的动态」</button>
+        <a class="list-row" href="#/keywords" style="margin-top:12px">${icon('filter')}关键词屏蔽<span class="val">${(store.settings.blockedKeywords || []).length} 个 ${icon('chevron')}</span></a>
+        ${store.settings.lastMuteSyncInfo ? `<p class="blk-sync-info">${esc(store.settings.lastMuteSyncInfo)}</p>` : ''}
         <div style="margin-top:16px" id="muted-list">
           ${list.length ? list.map((b) => `<div class="blk-blog">
             <a class="blk-ava" href="#/blog/${encodeURIComponent(b.name)}" aria-label="查看主页">
@@ -3166,6 +3176,59 @@
       unmuteBlog(n);
       toast('已取消屏蔽 @' + n);
       viewMuted();
+    });
+  }
+
+  // ================= 页面：关键词屏蔽 =================
+  function viewKeywords() {
+    setTab(null);
+    setHeader(`
+      <button class="icon-btn" id="btn-back" aria-label="返回">${icon('back')}</button>
+      <div class="h-title">关键词屏蔽</div>
+      <div class="spacer"></div>
+    `);
+    $('#btn-back').addEventListener('click', back);
+    const list = (store.settings.blockedKeywords || []).filter(Boolean);
+    viewEl.innerHTML = `
+      <div style="padding:14px 16px 40px" id="kw-wrap">
+        <p style="color:var(--sub);font-size:12.5px;line-height:1.7;margin:0 0 14px">
+          标题、摘要或标签里出现这些词的<span style="color:var(--text)">作品</span>会自动隐藏（只作用于这台设备）。
+          常用例子：「抽奖」、「代拍」、「求踢」。
+        </p>
+        <div class="search-box" style="background:var(--bg-soft)">
+          ${icon('filter')}
+          <input id="kw-input" placeholder="输入关键词，回车添加" maxlength="40">
+        </div>
+        <div style="margin-top:16px" id="kw-list">
+          ${list.length ? list.map((k) => `<div class="blk-blog">
+            <div class="blk-ava" style="display:grid;place-items:center;background:var(--bg-soft);color:var(--sub);border-radius:10px">${icon('filter')}</div>
+            <div class="blk-info"><b>${esc(k)}</b><i>标题 / 摘要 / 标签包含就隐藏</i></div>
+            <button class="blk-del" data-unkeyword="${esc(k)}" aria-label="删除关键词">✕</button>
+          </div>`).join('') : '<div class="cmt-empty" style="padding:24px 0">还没有屏蔽任何关键词</div>'}
+        </div>
+      </div>`;
+    const wrap = $('#kw-wrap');
+    const input = $('#kw-input');
+    input.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      const v = input.value.trim();
+      if (!v) return;
+      const arr = (store.settings.blockedKeywords || []).filter(Boolean);
+      if (arr.indexOf(v) >= 0) { toast('已经屏蔽过「' + v + '」'); return; }
+      arr.push(v);
+      store.settings.blockedKeywords = arr;
+      store.saveSettings();
+      toast('已屏蔽关键词「' + v + '」');
+      viewKeywords();
+    });
+    wrap.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-unkeyword]');
+      if (!btn) return;
+      const k = btn.dataset.unkeyword;
+      store.settings.blockedKeywords = (store.settings.blockedKeywords || []).filter((x) => x !== k);
+      store.saveSettings();
+      toast('已取消屏蔽「' + k + '」');
+      viewKeywords();
     });
   }
 
@@ -3238,6 +3301,7 @@
       version: 1,
       exportedAt: new Date().toISOString(),
       blockedTags: (store.settings.blockedTags || []).slice(),
+      blockedKeywords: (store.settings.blockedKeywords || []).filter(Boolean).slice(),
       mutedBlogs: mutedBlogList(),
       blockedBlogs: blockedBlogList(),
     };
@@ -3256,10 +3320,10 @@
     viewEl.innerHTML = `
       <div style="padding:14px 16px 40px" id="bio-wrap">
         <p style="color:var(--sub);font-size:12.5px;line-height:1.7;margin:0 0 12px">
-          标签屏蔽、屏蔽用户、拉黑名单都只存在这台设备上。换手机或重装前，
+          标签屏蔽、关键词屏蔽、屏蔽用户、拉黑名单都只存在这台设备上。换手机或重装前，
           把下面这段复制出去存好；换好之后再粘回来点「导入」就能恢复。
         </p>
-        <div class="bio-stats">现在有 <b>${snap.blockedTags.length}</b> 个标签屏蔽 · <b>${snap.mutedBlogs.length}</b> 位屏蔽用户 · <b>${snap.blockedBlogs.length}</b> 位拉黑</div>
+        <div class="bio-stats">现在有 <b>${snap.blockedTags.length}</b> 个标签屏蔽 · <b>${snap.blockedKeywords.length}</b> 个关键词 · <b>${snap.mutedBlogs.length}</b> 位屏蔽用户 · <b>${snap.blockedBlogs.length}</b> 位拉黑</div>
         <textarea id="bio-text" spellcheck="false">${esc(text)}</textarea>
         <div class="bio-actions">
           <button class="btn" id="bio-copy">${icon('export')} 复制全部</button>
@@ -3310,10 +3374,11 @@
       }
       if (!data || typeof data !== 'object') return toast('内容不是名单对象');
       const tags = Array.isArray(data.blockedTags) ? data.blockedTags : [];
+      const keywords = Array.isArray(data.blockedKeywords) ? data.blockedKeywords : [];
       const muted = Array.isArray(data.mutedBlogs) ? data.mutedBlogs : [];
       const black = Array.isArray(data.blockedBlogs) ? data.blockedBlogs : [];
-      if (!tags.length && !muted.length && !black.length) return toast('这份名单里没有可导入的内容');
-      if (!confirm(`导入：${tags.length} 个标签屏蔽、${muted.length} 位屏蔽用户、${black.length} 位拉黑？\n（合并到现有名单，不会删除已有的）`)) return;
+      if (!tags.length && !keywords.length && !muted.length && !black.length) return toast('这份名单里没有可导入的内容');
+      if (!confirm(`导入：${tags.length} 个标签、${keywords.length} 个关键词、${muted.length} 位屏蔽用户、${black.length} 位拉黑？\n（合并到现有名单，不会删除已有的）`)) return;
 
       const normName = (x) => {
         if (!x) return null;
@@ -3333,6 +3398,16 @@
       }
       store.settings.blockedTags = [...tagSet];
 
+      const kwSet = new Set((store.settings.blockedKeywords || []).map(String));
+      let addKws = 0;
+      for (const k of keywords) {
+        const v = String(k || '').trim();
+        if (!v || kwSet.has(v)) continue;
+        kwSet.add(v);
+        addKws++;
+      }
+      store.settings.blockedKeywords = [...kwSet];
+
       const mergeBlogs = (current, incoming) => {
         const map = new Map(current.map((b) => [b.name, b]));
         let added = 0;
@@ -3350,7 +3425,7 @@
       store.settings.blockedBlogs = b.list;
 
       store.saveSettings();
-      toast(`已导入：标签 ${addTags} 个 · 屏蔽用户 ${m.added} 位 · 拉黑 ${b.added} 位`);
+      toast(`已导入：标签 ${addTags} 个 · 关键词 ${addKws} 个 · 屏蔽用户 ${m.added} 位 · 拉黑 ${b.added} 位`);
       viewBlockIO();
     });
   }
@@ -3455,6 +3530,7 @@
       if (path === '/tags') return await viewTagsSetting();
       if (path === '/blocked') return viewBlocked();
       if (path === '/muted') return viewMuted();
+      if (path === '/keywords') return viewKeywords();
       if (path === '/blacklist') return viewBlacklist();
       if (path === '/block-io') return viewBlockIO();
       if (path === '/relation') return await viewRelation(q.get('type') === 'fans' ? 'fans' : 'following');
