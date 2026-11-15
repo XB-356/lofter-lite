@@ -103,6 +103,8 @@
     bookmark: '<path d="M6.4 3.6h11.2v17l-5.6-3.8-5.6 3.8z"/>',
     bookmarkFill: '<path d="M6.4 3.6h11.2v17l-5.6-3.8-5.6 3.8z" fill="currentColor" stroke="none"/>',
     external: '<path d="M13.4 4.2h6.4v6.4"/><path d="m20 4-8.6 8.6"/><path d="M10.4 5.4H5.6a1.4 1.4 0 0 0-1.4 1.4v11.6a1.4 1.4 0 0 0 1.4 1.4H17a1.4 1.4 0 0 0 1.4-1.4v-4.8"/>',
+    export: '<path d="M12 15.2V4.4"/><path d="m7.6 8.8 4.4-4.4 4.4 4.4"/><path d="M5.4 15.4v3.2a1.4 1.4 0 0 0 1.4 1.4h10.4a1.4 1.4 0 0 0 1.4-1.4v-3.2"/>',
+    import: '<path d="M12 4.4v10.8"/><path d="m7.6 10.8 4.4 4.4 4.4-4.4"/><path d="M5.4 15.4v3.2a1.4 1.4 0 0 0 1.4 1.4h10.4a1.4 1.4 0 0 0 1.4-1.4v-3.2"/>',
     close: '<path d="m6 6 12 12M18 6 6 18"/>',
     fire: '<path d="M12 2.8s5.4 4 5.4 9.2a5.4 5.4 0 0 1-10.8 0c0-1.9.9-3.1.9-3.1s-2.9 1.8-2.9 5.4a7.4 7.4 0 0 0 14.8 0c0-6.2-7.4-11.5-7.4-11.5z"/>',
     tag: '<path d="M4 4h6.6l9.6 9.6a1.6 1.6 0 0 1 0 2.3l-4.3 4.3a1.6 1.6 0 0 1-2.3 0L4 10.6z"/><circle cx="8.2" cy="8.2" r="1.3"/>',
@@ -2361,6 +2363,7 @@
         <a class="list-row" href="#/blocked">${icon('shield')}标签屏蔽<span class="val">${(store.settings.blockedTags || []).length} 个 ${icon('chevron')}</span></a>
         <a class="list-row" href="#/muted">${icon('user')}屏蔽用户<span class="val">${mutedBlogList().length} 位 ${icon('chevron')}</span></a>
         <a class="list-row" href="#/blacklist">${icon('shield')}拉黑名单<span class="val">${blockedBlogList().length} 位 ${icon('chevron')}</span></a>
+        <a class="list-row" href="#/block-io">${icon('export')}导入 / 导出屏蔽<span class="val">${icon('chevron')}</span></a>
         <button class="list-row" id="theme-row">${icon('palette')}外观<span class="val" id="theme-val">${themeLabel()}</span></button>
         <button class="list-row" id="clear-cache">${icon('trash')}<span class="danger">清除本地记录</span><span class="val"></span></button>
       </div>
@@ -2552,6 +2555,7 @@
         <div class="blk-sec-title">屏蔽用户与拉黑</div>
         <a class="list-row" href="#/muted">${icon('user')}屏蔽用户<span class="val">${mutedBlogList().length} 位 ${icon('chevron')}</span></a>
         <a class="list-row" href="#/blacklist">${icon('shield')}拉黑名单<span class="val">${blockedBlogList().length} 位 ${icon('chevron')}</span></a>
+        <a class="list-row" href="#/block-io">${icon('export')}导入 / 导出屏蔽<span class="val">${icon('chevron')}</span></a>
         ${store.settings.lastSyncInfo ? `<p class="blk-sync-info">${esc(store.settings.lastSyncInfo)}</p>` : ''}
       </div>`;
     bindBlockSync(viewBlocked);
@@ -2719,6 +2723,132 @@
     });
   }
 
+  // ================= 页面：导入 / 导出屏蔽 =================
+  // 三种「不想看」名单（标签屏蔽 / 屏蔽用户 / 拉黑名单）都存本机，换机就丢，
+  // 所以给一个纯文本的 JSON 导入导出：复制出去记着，或者粘回来恢复。
+  function blockSnapshot() {
+    return {
+      app: 'lofter-lite',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      blockedTags: (store.settings.blockedTags || []).slice(),
+      mutedBlogs: mutedBlogList(),
+      blockedBlogs: blockedBlogList(),
+    };
+  }
+
+  function viewBlockIO() {
+    setTab(null);
+    setHeader(`
+      <button class="icon-btn" id="btn-back" aria-label="返回">${icon('back')}</button>
+      <div class="h-title">导入 / 导出屏蔽</div>
+      <div class="spacer"></div>
+    `);
+    $('#btn-back').addEventListener('click', back);
+    const snap = blockSnapshot();
+    const text = JSON.stringify(snap, null, 2);
+    viewEl.innerHTML = `
+      <div style="padding:14px 16px 40px" id="bio-wrap">
+        <p style="color:var(--sub);font-size:12.5px;line-height:1.7;margin:0 0 12px">
+          标签屏蔽、屏蔽用户、拉黑名单都只存在这台设备上。换手机或重装前，
+          把下面这段复制出去存好；换好之后再粘回来点「导入」就能恢复。
+        </p>
+        <div class="bio-stats">现在有 <b>${snap.blockedTags.length}</b> 个标签屏蔽 · <b>${snap.mutedBlogs.length}</b> 位屏蔽用户 · <b>${snap.blockedBlogs.length}</b> 位拉黑</div>
+        <textarea id="bio-text" spellcheck="false">${esc(text)}</textarea>
+        <div class="bio-actions">
+          <button class="btn" id="bio-copy">${icon('export')} 复制全部</button>
+          <button class="btn ghost" id="bio-file">${icon('import')} 从文件读取</button>
+        </div>
+        <div class="bio-actions">
+          <button class="btn" id="bio-import">${icon('check')} 导入文本框里的名单</button>
+        </div>
+        <input type="file" id="bio-file-input" accept=".json,application/json,text/plain" hidden>
+        <p style="color:var(--sub);font-size:11.5px;line-height:1.6;margin:14px 0 0">
+          导入是「合并」：已有的不会删，重复的会自动跳过。导入后可以在上面的三个列表里逐条取消。
+        </p>
+      </div>`;
+    const area = $('#bio-text');
+
+    $('#bio-copy').addEventListener('click', async () => {
+      const body = area.value;
+      try {
+        if (nativeApi && nativeApi.copy) nativeApi.copy(body);
+        else if (navigator.clipboard) await navigator.clipboard.writeText(body);
+        else throw new Error('没有剪贴板');
+        toast('已复制，存到安全的地方吧');
+      } catch (e) {
+        toast('复制失败，长按文本框手动全选复制');
+      }
+    });
+
+    $('#bio-file').addEventListener('click', () => $('#bio-file-input').click());
+    $('#bio-file-input').addEventListener('change', async (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      try {
+        const t = await f.text();
+        area.value = t;
+        toast('已读入文件，确认无误后点「导入」');
+      } catch (err) {
+        toast('读文件失败：' + err.message);
+      }
+    });
+
+    $('#bio-import').addEventListener('click', () => {
+      let data;
+      try {
+        data = JSON.parse(area.value);
+      } catch (e) {
+        toast('不是合法的 JSON，先点「复制全部」看看格式');
+        return;
+      }
+      if (!data || typeof data !== 'object') return toast('内容不是名单对象');
+      const tags = Array.isArray(data.blockedTags) ? data.blockedTags : [];
+      const muted = Array.isArray(data.mutedBlogs) ? data.mutedBlogs : [];
+      const black = Array.isArray(data.blockedBlogs) ? data.blockedBlogs : [];
+      if (!tags.length && !muted.length && !black.length) return toast('这份名单里没有可导入的内容');
+      if (!confirm(`导入：${tags.length} 个标签屏蔽、${muted.length} 位屏蔽用户、${black.length} 位拉黑？\n（合并到现有名单，不会删除已有的）`)) return;
+
+      const normName = (x) => {
+        if (!x) return null;
+        if (typeof x === 'string') return { name: x.trim(), nick: x.trim() };
+        const name = String(x.name || '').trim();
+        if (!name) return null;
+        return { name, nick: String(x.nick || name), avatar: x.avatar || '', time: x.time || Date.now() };
+      };
+
+      const tagSet = new Set((store.settings.blockedTags || []).map(String));
+      let addTags = 0;
+      for (const t of tags) {
+        const v = String(t || '').replace(/^#/, '').trim();
+        if (!v || tagSet.has(v)) continue;
+        tagSet.add(v);
+        addTags++;
+      }
+      store.settings.blockedTags = [...tagSet];
+
+      const mergeBlogs = (current, incoming) => {
+        const map = new Map(current.map((b) => [b.name, b]));
+        let added = 0;
+        for (const raw of incoming) {
+          const b = normName(raw);
+          if (!b || map.has(b.name)) continue;
+          map.set(b.name, b);
+          added++;
+        }
+        return { list: [...map.values()], added };
+      };
+      const m = mergeBlogs(mutedBlogList(), muted);
+      store.settings.mutedBlogs = m.list;
+      const b = mergeBlogs(blockedBlogList(), black);
+      store.settings.blockedBlogs = b.list;
+
+      store.saveSettings();
+      toast(`已导入：标签 ${addTags} 个 · 屏蔽用户 ${m.added} 位 · 拉黑 ${b.added} 位`);
+      viewBlockIO();
+    });
+  }
+
   // ================= 页面：诊断 =================
   async function viewDiag() {
     setTab(null);
@@ -2797,6 +2927,7 @@
       if (path === '/blocked') return viewBlocked();
       if (path === '/muted') return viewMuted();
       if (path === '/blacklist') return viewBlacklist();
+      if (path === '/block-io') return viewBlockIO();
       if (path === '/relation') return await viewRelation(q.get('type') === 'fans' ? 'fans' : 'following');
       if (path === '/favorites') return await viewAccountPosts('likes');
       if (path === '/shares') return await viewAccountPosts('shares');
