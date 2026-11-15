@@ -171,7 +171,7 @@ function rawComment(id, { hot = false, official = false, quote = false } = {}) {
     return {
       id,
       content: '这句写得太好了，我一口气读了三条街。',
-      quoteContent: '当月光落在旧城墙上的时候，整条街都安静了下来。',
+      quote: '当月光落在旧城墙上的时候，整条街都安静了下来。',
       publishTime: 1750000000000 - (h % 200) * 60000,
       likeCount: 12,
       ipLocation: '上海',
