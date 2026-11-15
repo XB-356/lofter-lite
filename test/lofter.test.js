@@ -52,12 +52,17 @@ test('normalizePost 把原始字段映射成前端需要的结构', () => {
   assert.equal(p.url, 'https://lenscape.lofter.com/post/abc123');
 });
 
-test('normalizePost 标出 AI 标签与付费内容', () => {
+test('normalizePost 标出 AI 标签、付费内容与审核中的作品', () => {
   const ai = lofter.normalizePost({ post: { id: 1, tagList: ['摄影', 'AI绘画'] } });
   assert.equal(ai.ai, true);
 
   const locked = lofter.normalizePost({ post: { id: 2, tag: '摄影', payView: 1 } });
   assert.equal(locked.locked, true);
+
+  const auditing = lofter.normalizePost({ post: { id: 3, blogId: 4, publishTime: Date.now(), auditing: true } });
+  assert.equal(auditing.audit, true);
+  const normal = lofter.normalizePost({ post: { id: 4, blogId: 4, publishTime: Date.now(), auditing: false } });
+  assert.equal(normal.audit, false);
 });
 
 test('mock 数据里混入的 null / AI / 草稿条目会被过滤，付费条目留给前端决定', async () => {

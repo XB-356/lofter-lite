@@ -218,6 +218,8 @@
         || !!post.isDraft
         || Number(post.queuePostType) > 0
         || !(post.publishTime || post.createTime),
+      // 审核中（作者自己能看，别人看不到）
+      audit: post.auditing === true || post.newVersionAuditing === true,
     };
   }
   function normDetail(entry) {
@@ -270,7 +272,7 @@
     const resp = await callApi(TAG_URL, { method: 'newTagSearch', tag, offset: offset || 0, limit: 20, type: sort || 'new' });
     const items = resp.items || [];
     return {
-      posts: items.map(normPost).filter(Boolean).filter((p) => !p.ai && !p.draft),
+      posts: items.map(normPost).filter(Boolean).filter((p) => !p.ai && !p.draft && !p.audit),
       nextOffset: typeof resp.offset === 'number' ? resp.offset : (offset || 0) + items.length,
       hasMore: items.length > 0,
     };
@@ -398,7 +400,7 @@
       blogdomain: name + '.lofter.com', method: 'getPostLists', limit: limit || 20, offset: offset || 0,
       checkpwd: 1, supportposttypes: POST_TYPES, postdigestnew: 1, needgetpoststat: 1,
     });
-    const posts = (resp.posts || []).map(normPost).filter(Boolean).filter((p) => !p.ai && !p.draft);
+    const posts = (resp.posts || []).map(normPost).filter(Boolean).filter((p) => !p.ai && !p.draft && !p.audit);
     // topPost 是博主自己置顶的那篇（形状和 posts[] 元素一样，里面还套一层 .post）
     const pinned = resp.topPost ? normPost(resp.topPost) : null;
     const bi = resp.blogInfo || (resp.posts && resp.posts[0] && resp.posts[0].post && resp.posts[0].post.blogInfo) || {};
@@ -820,7 +822,7 @@
     const merged = posts.filter((p) => {
       if (!p || !p.id || seen.has(p.id)) return false;
       seen.add(p.id);
-      return !p.ai && !p.draft;
+      return !p.ai && !p.draft && !p.audit;
     });
     merged.sort((a, b) => (b.time || 0) - (a.time || 0));
     return {
@@ -891,7 +893,7 @@
     if (meta.status && meta.status !== 200) throw new Error(meta.msg || '列表读取失败');
     const d = j.response || {};
     const items = (d.items || []).filter(Boolean);
-    const posts = items.map(normPost).filter(Boolean).filter((p) => !p.ai && !p.draft);
+    const posts = items.map(normPost).filter(Boolean).filter((p) => !p.ai && !p.draft && !p.audit);
     return {
       posts,
       count: Number(d.count) || 0,
@@ -948,7 +950,7 @@
       const n = normPost(merged);
       if (n && n.id) posts.push(n);
     }
-    const clean = posts.filter((p) => !p.ai && !p.draft);
+    const clean = posts.filter((p) => !p.ai && !p.draft && !p.audit);
     return {
       posts: clean,
       folder,
@@ -1037,7 +1039,7 @@
       const n = normPost(pv);
       if (n && n.id) posts.push(n);
     }
-    const clean = posts.filter((p) => !p.ai && !p.draft);
+    const clean = posts.filter((p) => !p.ai && !p.draft && !p.audit);
     const nextOffset = typeof resp.offset === 'number' ? resp.offset : (items.length ? off + items.length : -1);
     return {
       collection: collection || { id: cid, blogId: Number(blogId) || 0, name: '合集', postCount: 0 },
