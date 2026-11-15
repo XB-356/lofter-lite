@@ -304,12 +304,27 @@
     return out;
   }
 
+  // 图片评论：content 里只有「[图片]」这种占位文字，真正的图在 images[]（orign 是原图地址）。
+  function commentPic(src) {
+    const u = String(src || '');
+    if (!/^https?:\/\//i.test(u)) return '';
+    const sized = /[?&]thumbnail=/.test(u)
+      ? u
+      : u + (u.indexOf('?') >= 0 ? '&' : '?') + 'imageView&thumbnail=720x0&quality=90';
+    return '<img class="emote cmt-img" src="' + escText(sized) + '" alt="">';
+  }
+
   function normComment(c) {
+    if (!c) return null;
     const b = c.publisherBlogInfo || {};
     let content = richComment(c.content || '');
     (c.emotes || []).forEach((em) => {
       if (em.name && em.url) content = content.split(escText(em.name)).join('<img class="emote" src="' + escText(em.url) + '" alt="">');
     });
+    const pics = (c.images || []).map((im) => (im && (im.orign || im.raw || im.url)) || '').filter(Boolean);
+    let pi = 0;
+    content = content.replace(/\[图片\]/g, () => (pi < pics.length ? commentPic(pics[pi++]) : ''));
+    if (pi < pics.length) content += pics.slice(pi).map(commentPic).join('');
     return {
       id: c.id,
       author: { name: b.blogName || '', nick: b.blogNickName || 'LOFTER 用户', avatar: b.bigAvaImg || '' },
