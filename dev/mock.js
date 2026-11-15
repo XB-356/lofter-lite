@@ -61,7 +61,8 @@ async function tagPosts(tag, { offset = 0, sort = 'new', limit = PAGE } = {}) {
   if (EMPTY) return { posts: [], nextOffset: offset, hasMore: false };
   const items = page(tag, offset);
   return {
-    posts: items.map(lofter.normalizePost).filter(Boolean).filter((p) => !p.ai && !p.locked),
+    // 和真实上游对齐：付费/粮票作品照常返回，是否隐藏由前端的 hideLocked 设置决定
+    posts: items.map(lofter.normalizePost).filter(Boolean).filter((p) => !p.ai && !p.draft),
     nextOffset: offset + items.length,
     hasMore: offset + items.length < TOTAL,
   };
@@ -82,9 +83,15 @@ async function blogHome(name, { offset = 0 } = {}) {
   }
   const items = [];
   for (let i = 0; i < PAGE && offset + i < TOTAL; i++) {
-    items.push({ post: data.rawPost(postId(`blog:${name}`, offset + i), '摄影', { ai: i === 3, locked: i === 4 }) });
+    // i === 1 这条做成草稿（没有发布时间），用来验证「我的页不显示草稿」
+    const raw = data.rawPost(postId(`blog:${name}`, offset + i), '摄影', { ai: i === 3, locked: i === 4 });
+    if (i === 1) {
+      raw.isPublished = false;
+      raw.publishTime = 0;
+    }
+    items.push({ post: raw });
   }
-  const posts = items.map(lofter.normalizePost).filter(Boolean).filter((p) => !p.ai && !p.locked);
+  const posts = items.map(lofter.normalizePost).filter(Boolean).filter((p) => !p.ai && !p.draft);
   const author = data.authorFor(name);
   return {
     blog: {

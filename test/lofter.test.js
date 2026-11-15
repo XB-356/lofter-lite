@@ -60,13 +60,13 @@ test('normalizePost 标出 AI 标签与付费内容', () => {
   assert.equal(locked.locked, true);
 });
 
-test('mock 数据里混入的 null / AI / 付费条目都会被过滤，且不报错', async () => {
+test('mock 数据里混入的 null / AI / 草稿条目会被过滤，付费条目留给前端决定', async () => {
   const page = await mock.tagPosts('摄影', { offset: 0 });
-  assert.equal(page.posts.length, 9, '12 条原始数据 = 1 个 null + 1 篇 AI + 1 篇付费 被剔除后剩 9');
+  assert.equal(page.posts.length, 10, '12 条原始数据 = 1 个 null + 1 篇 AI 被剔除；付费条目保留，由前端 hideLocked 决定是否显示');
   for (const p of page.posts) {
     assert.ok(p.id);
     assert.equal(p.ai, false);
-    assert.equal(p.locked, false);
+    assert.equal(p.draft, false);
   }
   assert.equal(page.nextOffset, 12);
   assert.equal(page.hasMore, true);

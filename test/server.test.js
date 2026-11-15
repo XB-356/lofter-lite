@@ -45,7 +45,7 @@ test('/api/feed 在 mock 数据下能出图（曾因上游 null 条目整页 502
   for (const p of body.posts) {
     assert.ok(p.id, '每篇都要有 id');
     assert.equal(p.ai, false);
-    assert.equal(p.locked, false);
+    assert.equal(p.draft, false);
     assert.ok(p.author && typeof p.author.nick === 'string');
     assert.ok(p.stats && typeof p.stats.like === 'number');
   }
@@ -111,7 +111,7 @@ test('/api/blog 返回博主信息与作品列表', async () => {
   assert.equal(status, 200);
   assert.equal(body.blog.name, 'lenscape');
   assert.ok(body.blog.nick);
-  assert.equal(body.posts.length, 10, '12 条里剔掉 1 篇 AI + 1 篇付费');
+  assert.equal(body.posts.length, 10, '12 条里剔掉 1 篇 AI + 1 篇草稿；付费作品保留给前端');
 });
 
 test('/api/blog 博主名不合法时 400', async () => {
