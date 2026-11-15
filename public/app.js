@@ -1969,7 +1969,7 @@
 
     $('#orig-open').onclick = () => openExternal(post.url);
 
-    // 作品属于某个合集时，显示合集入口（合集名要再拉一次详情才拿得到）
+    // 作品属于某个合集时，显示合集入口 + 上一篇 / 下一篇
     if (post.collectionId) {
       const holder = $('#post-collection');
       const link = `#/collection/${encodeURIComponent(post.author.name)}/${post.author.id}/${post.collectionId}`;
@@ -1977,22 +1977,44 @@
         <span class="pc-ico">${icon('bookmark')}</span>
         <span class="pc-main"><b>所属合集</b><i>读取中…</i></span>
         <span class="pc-arr">${icon('chevron')}</span>
-      </a>`;
-      api('/api/collection', { name: post.author.name, blogId: post.author.id, collectionId: post.collectionId, offset: 0 })
-        .then((d) => {
-          const c = (d && d.collection) || {};
-          const el = holder.querySelector('.post-collection');
-          if (!el) return;
-          const b = el.querySelector('.pc-main b');
-          const i = el.querySelector('.pc-main i');
-          if (b) b.textContent = c.name || '所属合集';
-          const total = Number(c.postCount) || (d.posts || []).length;
-          if (i) i.textContent = total ? '共 ' + num(total) + ' 篇' : '';
-        })
-        .catch(() => {
-          const el = holder.querySelector('.post-collection');
-          if (el) el.remove();
-        });
+      </a><div class="pc-nav" id="pc-nav"></div>`;
+      (async () => {
+        let offset = 0;
+        let all = [];
+        let meta = null;
+        for (let i = 0; i < 6; i++) {
+          const d = await api('/api/collection', {
+            name: post.author.name, blogId: post.author.id, collectionId: post.collectionId, offset,
+          });
+          if (!meta) {
+            meta = d.collection || {};
+            const el = holder.querySelector('.post-collection');
+            if (el) {
+              const b = el.querySelector('.pc-main b');
+              const sub = el.querySelector('.pc-main i');
+              const total = Number(meta.postCount) || 0;
+              if (b) b.textContent = meta.name || '所属合集';
+              if (sub) sub.textContent = total ? '共 ' + num(total) + ' 篇' : '';
+            }
+          }
+          all = all.concat(d.posts || []);
+          if (!d.hasMore || !d.posts || !d.posts.length) break;
+          offset = d.nextOffset;
+        }
+        const nav = $('#pc-nav');
+        if (!nav) return;
+        const idx = all.findIndex((p) => String(p.id) === String(post.id));
+        if (idx < 0) { nav.remove(); return; }
+        const cell = (p, label, cls) => (p
+          ? `<a class="pc-btn ${cls}" href="#/post/${p.author.id}/${p.id}">${label}</a>`
+          : `<span class="pc-btn ${cls} is-off">${label}</span>`);
+        nav.innerHTML = cell(all[idx - 1], icon('back') + '上一篇', 'prev')
+          + cell(all[idx + 1], '下一篇' + icon('chevron'), 'next');
+      })().catch(() => {
+        const el = holder.querySelector('.post-collection');
+        if (el) el.remove();
+        holder.querySelector('#pc-nav')?.remove();
+      });
     }
 
     // 正文内图片收集
