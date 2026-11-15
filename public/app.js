@@ -1961,7 +1961,7 @@
             </div>
             <div class="cmt-compose"><input class="cmt-input" maxlength="500" placeholder="写评论…"><button class="cmt-send">发送</button></div>
             <div id="cmt-body"><div class="load-more"><span class="spinner"></span>评论加载中</div></div>
-            <div class="cmt-compose"><input class="cmt-input" maxlength="500" placeholder="写评论…"><button class="cmt-send">发送</button></div>
+            <div class="cmt-compose" id="cmt-compose-bottom"><input class="cmt-input" maxlength="500" placeholder="写评论…"><button class="cmt-send">发送</button></div>
           </section>
           <div class="post-end">— 内容版权归原作者所有 —</div>
         </article>
@@ -2295,6 +2295,10 @@
         if (body) body.innerHTML = `<div class="cmt-empty">${esc(err.message || '评论加载失败')}</div>`;
       } finally {
         loading = false;
+        // 评论很少时底部那条输入栏就是多余的（上端已经有一条），只留上面那条
+        const n = document.querySelectorAll('#cmt-body .cmt').length;
+        const bottom = document.getElementById('cmt-compose-bottom');
+        if (bottom) bottom.style.display = n < 6 ? 'none' : '';
       }
     }
 
