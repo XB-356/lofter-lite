@@ -2081,16 +2081,18 @@
       }
       return;
     }
-    // 网页版没法直接写相册：能下载就下载，否则提示长按
+    // 网页版没法直接写相册：下载属性对跨域图片不生效时会变成「在本页打开图片」，
+    // 所以开新标签（target=_blank），让用户在新页里长按/右键另存，别把当前页面顶掉。
     try {
       const a = document.createElement('a');
       a.href = cur.url;
       a.download = name + '.jpg';
+      a.target = '_blank';
       a.rel = 'noopener';
       document.body.appendChild(a);
       a.click();
       a.remove();
-      toast('已开始下载');
+      toast('已在新标签打开，长按图片可以保存');
     } catch (e) {
       toast('长按图片可以保存');
     }
