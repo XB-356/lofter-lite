@@ -2897,20 +2897,43 @@
     setTab(null);
     setHeader(`<button class="icon-btn" id="btn-back" aria-label="返回">${icon('back')}</button><div class="h-title">关于</div><div class="spacer"></div>`);
     $('#btn-back').addEventListener('click', back);
+    const sec = (title, body) => `<p><b style="color:var(--text)">${title}</b><br>${body}</p>`;
+    const item = (t, d) => `<li><b>${t}</b> — ${d}</li>`;
     viewEl.innerHTML = `
-      <div style="padding:24px 22px;line-height:1.9;font-size:13.5px;color:var(--text-2)">
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px">
+      <div style="padding:24px 22px 40px;line-height:1.85;font-size:13.5px;color:var(--text-2)">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
           <img src="icon.svg" width="52" height="52" style="border-radius:14px">
           <div><div style="font-size:19px;font-weight:800;color:var(--text)">LOFTER Lite</div>
-          <div style="font-size:12px;color:var(--sub)">v5.7 · 本地运行的极简客户端</div></div>
+          <div style="font-size:12px;color:var(--sub)">v5.7 · 非官方的轻量客户端</div></div>
         </div>
-        <p><b style="color:var(--text)">它是什么</b><br>
-        一个只保留「看内容」这件事的 LOFTER 第三方界面。首页推荐、标签、博主主页、图文详情都在，广告位、会员、周边商城、AI 创作入口这类模块一个都没有。</p>
-        <p><b style="color:var(--text)">数据从哪来</b><br>
-        通过 LOFTER 的公开接口读取公开内容，不需要登录。收藏、浏览历史、兴趣标签只存在这台手机的浏览器里，不会上传。</p>
-        <p><b style="color:var(--text)">注意</b><br>
-        非官方客户端，内容版权归原作者所有。如果接口调整导致某页打不开，重启服务即可；接口失效时请以官方 App 为准。</p>
-        <p style="color:var(--sub);font-size:12px;margin-top:22px">把本页添加到主屏幕，就能像 App 一样全屏打开。</p>
+        <p style="color:var(--sub);font-size:12px;margin:0 0 16px">零依赖 · 无广告 · 不上传任何本机数据</p>
+
+        ${sec('它是什么',
+          '一个只保留「刷和看」的 LOFTER 界面。两种形态共用一套前端：<b>本地网页版</b>（Node 起一个本地服务，浏览器打开，只读公开内容）和 <b>Android APK</b>（WebView 壳 + 原生桥，可以带登录态做点赞、关注、评论）。')}
+
+        ${sec('现在能做什么',
+          `<ul style="margin:6px 0 0;padding-left:18px">
+            ${item('推荐流', '瀑布流 + 标签筛选；视频帖 16:9 封面带时长，多图帖有缩略预览')}
+            ${item('关注流', '分「动态 / 订阅标签」，包含关注的人的推荐，可开关；首页只加载 3 页，滚到底再按需加载')}
+            ${item('订阅标签', '大卡片 + 三张缩略图，缩略图缓存在本机，进页面立刻出图；纯文字标签有占位块')}
+            ${item('作品详情', '多图 / 视频播放、正文清洗防 XSS、评论与楼中楼、喜欢、关注、系统分享、在浏览器打开原文')}
+            ${item('我的页', '账号的关注 / 粉丝 / 喜欢 / 收藏 / 推荐、关注与粉丝列表、收藏夹与收藏夹内作品、账号收藏；本机收藏与浏览历史')}
+            ${item('屏蔽体系', '标签屏蔽、屏蔽用户（只在这台设备隐藏，不通知对方）、拉黑名单（账号级黑名单）；名单可导入导出成 JSON')}
+            ${item('阅读体验', '深色模式、返回上一页回到原来的滑动位置、清除本地记录')}
+          </ul>`)}
+
+        ${sec('不提供的功能',
+          '没有发布入口：LOFTER 没有开放第三方发布接口，网页版发布页在非官方客户端里只会引导下载官方 App。也没有会员、广告、周边商城、AI 创作这类模块。')}
+
+        ${sec('数据从哪来',
+          '内容全部来自 LOFTER 的公开接口，版权归原作者所有。本机数据（屏蔽名单、本机收藏、浏览历史、标签缩略图缓存）只保存在这台设备上，不会上传；APK 里的登录 Cookie 由系统 WebView 管理，可以随时在「我的 → 退出登录」清掉。')}
+
+        ${sec('已知限制',
+          '上游接口会变：某页突然打不开时先下拉刷新；点赞等写操作偶尔会被 LOFTER 的风控要求滑块验证，属于上游限制，不是客户端坏了。接口失效时请以官方 App 为准。')}
+
+        <p style="color:var(--sub);font-size:12px;margin-top:22px">
+          网页版把本页「添加到主屏幕」就能像 App 一样全屏打开；APK 用 <code style="font-size:11.5px">npm run apk</code> 自己构建，零依赖、不需要 Android Studio。
+        </p>
       </div>`;
   }
 
