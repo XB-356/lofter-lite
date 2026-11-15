@@ -400,6 +400,30 @@ public class Bridge {
         });
     }
 
+    /**
+     * 读系统剪贴板里的文字（用于「复制 LOFTER 作品链接 → 自动打开」）。
+     * Android 10+ 只有当前获得焦点的 App 能读剪贴板，所以调用时页面必须在前台。
+     */
+    @JavascriptInterface
+    public void readClipboard(final String id) {
+        if (id == null) return;
+        ui.post(new Runnable() {
+            @Override
+            public void run() {
+                String text = "";
+                try {
+                    ClipboardManager cm = (ClipboardManager) activity.getSystemService(Context.CLIPBOARD_SERVICE);
+                    if (cm != null && cm.hasPrimaryClip() && cm.getPrimaryClip() != null
+                            && cm.getPrimaryClip().getItemCount() > 0) {
+                        CharSequence cs = cm.getPrimaryClip().getItemAt(0).coerceToText(activity);
+                        if (cs != null) text = cs.toString();
+                    }
+                } catch (Exception ignored) {}
+                deliver(id, 200, text == null ? "" : text);
+            }
+        });
+    }
+
     @JavascriptInterface
     public void share(final String title, final String url) {
         ui.post(new Runnable() {

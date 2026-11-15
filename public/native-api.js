@@ -1399,6 +1399,31 @@
     });
   }
 
+  // 读剪贴板：拿系统剪贴板的纯文本，用来识别「复制了 LOFTER 作品链接」
+  function readClipboard() {
+    return new Promise((resolve, reject) => {
+      if (!N.readClipboard) return reject(new Error('当前版本不支持读剪贴板'));
+      const id = 'c' + (++seq);
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        reject(new Error('读剪贴板超时'));
+      }, 8000);
+      pending.set(id, {
+        parts: [],
+        resolve: (text) => resolve(String(text || '')),
+        reject,
+        timer,
+      });
+      try {
+        N.readClipboard(id);
+      } catch (e) {
+        pending.delete(id);
+        clearTimeout(timer);
+        reject(e);
+      }
+    });
+  }
+
   window.__nativeApi = {
     loggedIn: function () { return N.isLoggedIn(); },
     checkLogin: probeLogin,
@@ -1410,6 +1435,7 @@
     login: function () { N.login(); },
     copy: function (text) { if (N.copy) N.copy(String(text)); },
     saveImage,
+    readClipboard,
     switchAccount: function () {
       if (N.relogin) N.relogin();
       else { N.logout(); N.login(); }

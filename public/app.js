@@ -3491,10 +3491,52 @@
     } catch (e) {}
   };
 
+  // ================= 剪贴板里的作品链接 =================
+  // 从 LOFTER 复制作品链接一般是 https://<博客名>.lofter.com/post/<blogId 十六进制>_<postId 十六进制>
+  // 这两段十六进制就是数字 ID（例：31fc1282_34e1e4981 → 838603394 / 14195509633）。
+  function parsePostLink(text) {
+    const s = String(text || '').trim();
+    if (!s || s.length > 400 || !/lofter\.com/i.test(s)) return null;
+    let m = s.match(/lofter\.com\/post\/([0-9a-f]{5,20})_([0-9a-f]{5,20})/i);
+    if (m) {
+      const blogId = parseInt(m[1], 16);
+      const postId = parseInt(m[2], 16);
+      return blogId && postId ? { blogId, postId } : null;
+    }
+    m = s.match(/lofter\.com\/[^"'\s]*?post\/(\d{5,20})\/(\d{5,20})/);
+    if (m) return { blogId: Number(m[1]), postId: Number(m[2]) };
+    return null;
+  }
+
+  let lastClipLink = '';
+  async function openLinkFromClipboard() {
+    if (!nativeApi || !nativeApi.readClipboard) return;
+    let text = '';
+    try {
+      text = await nativeApi.readClipboard();
+    } catch (e) {
+      return;
+    }
+    const hit = parsePostLink(text);
+    if (!hit) return;
+    const key = hit.blogId + '/' + hit.postId;
+    if (key === lastClipLink) return;
+    lastClipLink = key;
+    const here = currentRoute.replace(/^#/, '');
+    if (here === `/post/${hit.blogId}/${hit.postId}`) return;
+    toast('已从剪贴板打开这篇作品');
+    nav(`#/post/${hit.blogId}/${hit.postId}`);
+  }
+
   // 初始化
   applyTheme();
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
   render();
+  // 启动时和回到前台时各看一次剪贴板（Android 10+ 只有前台 App 能读）
+  setTimeout(openLinkFromClipboard, 1200);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) setTimeout(openLinkFromClipboard, 600);
+  });
 
   // Service Worker（仅浏览器/PWA 模式）
   if (!NATIVE && 'serviceWorker' in navigator) {
