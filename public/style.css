@@ -870,11 +870,11 @@ body.immersive #app { padding-bottom: 0; }
 .cmt-who span { font-size: 10.5px; color: var(--sub); }
 .cmt-text { font-size: 13.5px; line-height: 1.65; margin-top: 3px; word-break: break-word; }
 .cmt-text .emote { display: inline-block; width: 20px; height: 20px; vertical-align: -4px; margin: 0 1px; }
-/* 评论里带的大图（图片评论）：按原比例缩到正文宽度内，别撑破界面 */
+/* 评论里带的大图（图片评论）：按缩略图显示，点开再看大图 */
 .cmt-text .emote.cmt-img {
-  width: auto; height: auto; max-width: 100%; max-height: 180px;
+  width: auto; height: auto; max-width: 62%; max-height: 120px;
   border-radius: 8px; vertical-align: middle; margin: 4px 0;
-  background: var(--bg-soft);
+  background: var(--bg-soft); cursor: zoom-in;
 }
 .cmt-foot { font-size: 11px; color: var(--sub); margin-top: 4px; }
 .cmt-replies {

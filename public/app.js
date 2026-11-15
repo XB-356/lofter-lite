@@ -2066,6 +2066,13 @@
     closeLightbox();
   });
   $('.lb-close', lightbox).addEventListener('click', closeLightbox);
+  // 评论里的图片缩略图：点一下进图片查看器看大图
+  document.addEventListener('click', (e) => {
+    const im = e.target.closest && e.target.closest('.cmt-img');
+    if (!im) return;
+    e.preventDefault();
+    openLightbox([{ url: im.getAttribute('src'), w: 0, h: 0 }], 0);
+  });
   $('#lb-save')?.addEventListener('click', async (e) => {
     // 别让点击冒泡到 lightbox 的「点空白关闭」处理器，保存完还能继续看
     e.stopPropagation();
