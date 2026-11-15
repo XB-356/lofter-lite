@@ -3160,6 +3160,32 @@
       </div>`;
     const wrap = $('#muted-wrap');
     const input = $('#muted-input');
+    const syncBtn = $('#muted-sync');
+    syncBtn?.addEventListener('click', async () => {
+      syncBtn.disabled = true;
+      syncBtn.textContent = '同步中…';
+      try {
+        const d = await api('/api/shields', {});
+        const bmap = new Map(mutedBlogList().map((b) => [b.name, b]));
+        let added = 0;
+        (d.blogs || []).forEach((b) => {
+          if (!b || !b.name || bmap.has(b.name)) return;
+          bmap.set(b.name, b);
+          added++;
+        });
+        store.settings.mutedBlogs = [...bmap.values()];
+        const err = (d.errors || [])[0];
+        store.settings.lastMuteSyncInfo = `同步结果：账号里有 ${(d.blogs || []).length} 位「不想看的人」，新加入本机 ${added} 位`
+          + (err ? `；${err}` : '');
+        store.saveSettings();
+        toast(`同步完成：新增 ${added} 位屏蔽`);
+        viewMuted();
+      } catch (e) {
+        toast('同步失败：' + e.message);
+        syncBtn.disabled = false;
+        syncBtn.innerHTML = `${icon('refresh')} 从账号同步「不想看 TA 的动态」`;
+      }
+    });
     input.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter') return;
       const v = input.value.trim();

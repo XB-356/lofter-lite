@@ -1121,6 +1121,51 @@
     return out;
   }
 
+  // 账号级「不想看 TA 的动态」：官方 App 里在关注流/推荐流长按作者就能屏蔽，
+  // 数据在 shieldrecommanage（推荐流）和 timeline/manage.json（关注流）两处
+  async function shieldedBlogs() {
+    if (!(await probeLogin())) throw new Error('请先登录 LOFTER');
+    const out = { blogs: [], keys: {}, errors: [] };
+    const tries = [
+      { key: 'recommend', url: 'https://api.lofter.com/v1.1/shieldrecommanage.api?product=' + PRODUCT + '&optype=get&offset=0&limit=100', method: 'GET' },
+      { key: 'timeline', url: 'https://api.lofter.com/timeline/manage.json?op=get', method: 'POST', body: 'op=get' },
+    ];
+    for (const t of tries) {
+      try {
+        const text = await req(t.url, {
+          method: t.method,
+          body: t.body,
+          headers: Object.assign({ 'User-Agent': APP_UA, Accept: 'application/json' },
+            t.method === 'POST' ? { 'Content-Type': 'application/x-www-form-urlencoded' } : {}),
+        });
+        const j = JSON.parse(text);
+        if (j && j.meta && j.meta.status !== 200) {
+          out.errors.push(t.key + ': ' + (j.meta.msg || j.meta.desc || j.meta.status));
+          continue;
+        }
+        const d = (j && (j.response || j.data)) || (j && j.code === 0 ? j : {});
+        if (d && typeof d === 'object') out.keys[t.key] = Object.keys(d);
+        const arr = d.blogs || d.list || d.items || d.blogList || d.shieldBlogs || [];
+        for (const it of arr) {
+          if (!it) continue;
+          const b = it.blogInfo || it;
+          const n = b.blogName || it.blogName || it.domain || it.blogDomain;
+          if (!n) continue;
+          out.blogs.push({
+            name: n,
+            nick: b.blogNickName || b.nickName || n,
+            avatar: b.bigAvaImg || b.avatar || b.headImg || '',
+            time: Number(it.time || it.shieldTime || it.createTime || 0) || 0,
+          });
+        }
+      } catch (e) { out.errors.push(t.key + ': ' + e.message); }
+    }
+    const bm = new Map();
+    for (const b of out.blogs) if (b && b.name && !bm.has(b.name)) bm.set(b.name, b);
+    out.blogs = [...bm.values()];
+    return out;
+  }
+
   // 回读详情里的 liked：上游有时对点赞回 200 却没真正写进账号，
   // 只有详情里的 liked 才算数（否则会出现「本地亮了、退出重进又变回未喜欢」）
   async function likedState(blogId, postId) {
@@ -1358,6 +1403,7 @@
     '/api/comment-add': (p) => addComment(p.blogId, p.postId, p.content, p.parentId),
     '/api/replies': (p) => replies(p.blogId, p.postId, p.commentId, Number(p.offset) || 0),
     '/api/sync-blocks': () => syncBlocks(),
+    '/api/shields': () => shieldedBlogs(),
     '/api/me': () => cached('me', 5 * 60e3, getProfile),
     '/api/subscribed': () => cached('subscribed', 10 * 60e3, getSubscribedTags),
     '/api/diag': () => diag(),
