@@ -1079,7 +1079,7 @@ body.immersive #app { padding-bottom: 0; }
   margin-top: 2px; padding: 0; border: 0; background: none;
   color: var(--accent); font: inherit; font-size: 12px; cursor: pointer;
 }
-.me-profile-main .me-meta { font-size: 11.5px; color: var(--sub); }
+.me-profile-main .me-meta { font-size: 11.5px; color: var(--sub); white-space: normal; line-height: 1.5; }
 .me-profile-main .me-sub { margin-top: 2px; }
 /* 「置顶作品」卡：和资料卡同宽，一行封面 + 标题 */
 .pinned-card {
