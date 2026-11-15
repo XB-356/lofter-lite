@@ -600,8 +600,10 @@
     }
     const a = p.author || {};
     const mb = mutedBlogList();
-    if (mb.length && (a.name || a.nick)) {
-      if (mb.some((x) => (a.name && x.name === a.name) || (a.nick && (x.nick === a.nick || x.name === a.nick)))) return true;
+    if (mb.length && (a.name || a.nick || a.id)) {
+      if (mb.some((x) => (a.id && x.id && String(x.id) === String(a.id))
+        || (a.name && x.name === a.name)
+        || (a.nick && (x.nick === a.nick || x.name === a.nick)))) return true;
     }
     const bb = blockedBlogList();
     if (bb.length) {
@@ -638,16 +640,21 @@
     if (confirm('屏蔽 #' + tag + '？\n之后带这个标签的内容会自动隐藏。')) blockTag(tag);
   }
   // 屏蔽用户：本机隐藏 TA 的内容。和「拉黑」（账号黑名单）是两件事。
+  function muteKeyOf(b) {
+    if (!b) return '';
+    return b.name || (b.id ? 'id:' + b.id : '');
+  }
   function muteBlog(ref, silent) {
     if (!ref) return false;
     const a = typeof ref === 'string' ? { name: ref, nick: ref } : ref;
-    if (!a.name) return false;
+    if (!a.name && !a.id) return false;
     const list = mutedBlogList();
-    if (list.some((b) => b.name === a.name)) {
+    const key = muteKeyOf(a);
+    if (list.some((b) => muteKeyOf(b) === key)) {
       if (!silent) toast('已经屏蔽过 @' + (a.nick || a.name));
       return false;
     }
-    list.unshift({ name: a.name, nick: a.nick || a.name, avatar: a.avatar || '', time: Date.now() });
+    list.unshift({ name: a.name || '', id: a.id || 0, nick: a.nick || a.name || ('用户 ' + a.id), avatar: a.avatar || '', time: Date.now() });
     store.settings.mutedBlogs = list;
     store.saveSettings();
     if (!silent) toast('已屏蔽 @' + (a.nick || a.name) + '（仅本机）');
@@ -659,14 +666,14 @@
     if ((location.hash || '').indexOf('#/post/') === 0) { closeSheet(); back(); }
     return true;
   }
-  function unmuteBlog(name) {
-    store.settings.mutedBlogs = mutedBlogList().filter((b) => b.name !== name);
+  function unmuteBlog(key) {
+    store.settings.mutedBlogs = mutedBlogList().filter((b) => muteKeyOf(b) !== key);
     store.saveSettings();
   }
   function blogRefOf(post) {
     const a = (post && post.author) || {};
-    if (!a.name) return null;
-    return { name: a.name, nick: a.nick || a.name, avatar: a.avatar || '' };
+    if (!a.name && !a.id) return null;
+    return { name: a.name || '', id: a.id || 0, nick: a.nick || a.name || '', avatar: a.avatar || '' };
   }
   let sheetPost = null;
   function openBlockSheet(post) {
@@ -3225,9 +3232,10 @@
       if (!btn) return;
       const n = btn.dataset.unmuteBlog;
       unmuteBlog(n);
-      toast('已取消屏蔽 @' + n);
+      toast('已取消屏蔽 ' + (n.indexOf('id:') === 0 ? n.slice(3) : '@' + n));
       viewMuted();
     });
+    resolveMutedNames().catch(() => {});
   }
 
   // ================= 页面：关键词屏蔽 =================

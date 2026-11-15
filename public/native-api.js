@@ -1121,49 +1121,24 @@
     return out;
   }
 
-  // 账号级「不想看 TA 的动态」：官方 App 里在关注流/推荐流长按作者就能屏蔽，
-  // 数据在 shieldrecommanage（推荐流）和 timeline/manage.json（关注流）两处
-  async function shieldedBlogs() {
-    if (!(await probeLogin())) throw new Error('请先登录 LOFTER');
-    const out = { blogs: [], keys: {}, errors: [] };
-    const tries = [
-      { key: 'recommend', url: 'https://api.lofter.com/v1.1/shieldrecommanage.api?product=' + PRODUCT + '&optype=get&offset=0&limit=100', method: 'GET' },
-      { key: 'timeline', url: 'https://api.lofter.com/timeline/manage.json?op=get', method: 'POST', body: 'op=get' },
-    ];
-    for (const t of tries) {
-      try {
-        const text = await req(t.url, {
-          method: t.method,
-          body: t.body,
-          headers: Object.assign({ 'User-Agent': APP_UA, Accept: 'application/json' },
-            t.method === 'POST' ? { 'Content-Type': 'application/x-www-form-urlencoded' } : {}),
-        });
-        const j = JSON.parse(text);
-        if (j && j.meta && j.meta.status !== 200) {
-          out.errors.push(t.key + ': ' + (j.meta.msg || j.meta.desc || j.meta.status));
-          continue;
-        }
-        const d = (j && (j.response || j.data)) || (j && j.code === 0 ? j : {});
-        if (d && typeof d === 'object') out.keys[t.key] = Object.keys(d);
-        const arr = d.blogs || d.list || d.items || d.blogList || d.shieldBlogs || [];
-        for (const it of arr) {
-          if (!it) continue;
-          const b = it.blogInfo || it;
-          const n = b.blogName || it.blogName || it.domain || it.blogDomain;
-          if (!n) continue;
-          out.blogs.push({
-            name: n,
-            nick: b.blogNickName || b.nickName || n,
-            avatar: b.bigAvaImg || b.avatar || b.headImg || '',
-            time: Number(it.time || it.shieldTime || it.createTime || 0) || 0,
-          });
-        }
-      } catch (e) { out.errors.push(t.key + ': ' + e.message); }
-    }
-    const bm = new Map();
-    for (const b of out.blogs) if (b && b.name && !bm.has(b.name)) bm.set(b.name, b);
-    out.blogs = [...bm.values()];
-    return out;
+  // 用 blogId 反查博客基本信息（本机屏蔽列表里只有 ID 的条目靠它补名字）
+  async function blogBriefById(blogId) {
+    const id = Number(blogId) || 0;
+    if (!id) throw new Error('缺少 blogId');
+    const text = await req('https://api.lofter.com/v2.0/blogHomePage.api?product=' + PRODUCT
+      + '&targetblogid=' + id + '&method=getBlogInfoDetail&checkpwd=1&returnData=1', {
+      headers: { 'User-Agent': APP_UA, Accept: 'application/json' },
+    });
+    const j = JSON.parse(text);
+    const bi = (j && j.response && (j.response.blogInfo || j.response)) || {};
+    if (!bi.blogName) throw new Error('这个用户查不到主页');
+    return {
+      id,
+      name: bi.blogName,
+      nick: bi.blogNickName || bi.blogName,
+      avatar: bi.bigAvaImg || bi.avatarBoxImage || '',
+      intro: bi.selfIntro || '',
+    };
   }
 
   // 回读详情里的 liked：上游有时对点赞回 200 却没真正写进账号，
@@ -1403,7 +1378,7 @@
     '/api/comment-add': (p) => addComment(p.blogId, p.postId, p.content, p.parentId),
     '/api/replies': (p) => replies(p.blogId, p.postId, p.commentId, Number(p.offset) || 0),
     '/api/sync-blocks': () => syncBlocks(),
-    '/api/shields': () => shieldedBlogs(),
+    '/api/blog-brief': (p) => blogBriefById(p.id),
     '/api/me': () => cached('me', 5 * 60e3, getProfile),
     '/api/subscribed': () => cached('subscribed', 10 * 60e3, getSubscribedTags),
     '/api/diag': () => diag(),
