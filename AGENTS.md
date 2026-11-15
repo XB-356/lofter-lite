@@ -142,3 +142,6 @@ test/                node:test：server(HTTP) / lofter(归一化) / cache / live
 - 长按作品卡片只弹「不想看这条？」面板，卡片文字不可选中（`public/style.css` 的 `.card, .big-card { user-select: none }`）；评论少于 6 条时 `#cmt-compose-bottom` 会被隐藏。
 - 详情页「为什么被屏蔽」用 `blockCauses(p)`（返回 `{text, short}`），卡片里显示作者/标题/标签 + 「该作品已被【short】屏蔽」；合集上一篇/下一篇靠 `/api/collection` 最多翻 6 页找位置，找不到就把合集卡整个移除。
 - 标签里的 `tagList` 偶尔夹 `undefined`/空串，两份归一化都要 `map(String).filter(Boolean)`，否则列表里会出现 `#undefined`。
+
+- **卡片样式在用户主页 / 合集页可切**：`store.settings.cardMode = { blog: 'small'|'big', collection: … }`，`cardMode(kind)` / `cardModeBar(kind)` / `feedShell(kind)` / `addPostToFeed(m, post)` 四个函数一处管；小卡走 `.masonry` + `cardEl`，大卡走 `.big-list` + `bigCardEl`（容器 ID 固定 `#masonry` / `#big-list`，别在新视图里另起名字）。切换时 `saveSettings()` 后直接 `render()` 重进当前路由。
+- **搜索结果里的作品也必须是作品卡片**（不是行）：`mountPostCards(host, posts)` 里建一个 `.masonry.res-masonry` 再 `cardEl`，标签/用户仍是 `.res-row`。新增搜索类型时注意「全部」tab 是分段（标签/用户/作品），作品段要占位后挂载，不能直接塞 HTML 字符串。
