@@ -3199,7 +3199,6 @@
           <input id="muted-input" placeholder="输入博主域名，回车添加" maxlength="64">
         </div>
         <a class="list-row" href="#/block-io" style="margin-top:12px">${icon('export')}导入 / 导出屏蔽<span class="val">${icon('chevron')}</span></a>
-        ${store.settings.lastMuteSyncInfo ? `<p class="blk-sync-info">${esc(store.settings.lastMuteSyncInfo)}</p>` : ''}
         <div style="margin-top:16px" id="muted-list">
           ${list.length ? list.map((b) => {
             const key = muteKeyOf(b);
