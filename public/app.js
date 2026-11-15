@@ -405,6 +405,7 @@
             <img class="ava" src="${esc(post.author.avatar)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
             <span>${esc(post.author.nick)}</span>
           </a>
+          <span class="big-time">${since(post.time)}</span>
           <span style="flex:1"></span>
           ${post.stats && post.stats.like ? `<span class="stat">${icon('heart')}${num(post.stats.like)}</span>` : ''}
         </div>
@@ -1589,7 +1590,7 @@
           </a>
           <div class="who">
             <b>${esc(post.author.nick)}</b>
-            <span>${since(post.time)}${post.ipLocation ? ' · ' + esc(post.ipLocation) : ''}</span>
+            <span>${post.time ? '发布于 ' + fmtDate(post.time) : ''}${post.edited && post.time && post.edited > post.time + 60000 ? ' · 编辑于 ' + fmtDate(post.edited) : ''}${post.ipLocation ? ' · ' + esc(post.ipLocation) : ''}</span>
           </div>
         </div>
         <article class="post-article">
