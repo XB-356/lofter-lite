@@ -699,10 +699,12 @@ body.immersive #app { padding-bottom: 0; }
 .sheet .actions { display: flex; gap: 9px; margin-top: 16px; }
 .btn {
   flex: 1; height: 42px; border-radius: 12px;
-  display: grid; place-items: center;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
   font-size: 14px; font-weight: 650;
   background: var(--bg-soft); color: var(--text);
 }
+/* 按钮里的图标统一尺寸：SVG 没有 width/height 时默认 300×150，会撑成一个巨大的图标 */
+.btn svg { width: 18px; height: 18px; }
 .btn.primary { background: var(--accent); color: #fff; }
 .btn.ghost { background: transparent; color: var(--sub); }
 .btn.muted-on { background: var(--accent-weak); color: var(--accent); }
@@ -1384,6 +1386,30 @@ body.immersive #app { padding-bottom: 0; }
 #blk-sync svg { width: 16px; height: 16px; flex: none; }
 
 .blk-sec-title { margin: 22px 0 10px; font-size: 13.5px; font-weight: 700; }
+/* 「屏蔽」中心四个页面共用的顶栏 tab */
+.blk-tabs {
+  display: flex; gap: 8px;
+  padding: 10px 16px;
+  overflow-x: auto; overflow-y: hidden;
+  position: sticky; top: var(--header-h, 52px); z-index: 5;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.blk-tabs::-webkit-scrollbar { display: none; }
+.blk-tab {
+  flex: none;
+  padding: 6px 14px;
+  border-radius: 99px;
+  background: var(--bg-soft);
+  color: var(--sub);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.blk-tab.on { background: var(--accent-weak); color: var(--accent); }
 .blk-sync-info { margin: 14px 0 0; font-size: 11px; color: var(--sub); line-height: 1.7; word-break: break-all; }
 
 /* 黑名单博主 */
