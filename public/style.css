@@ -1527,3 +1527,13 @@ input[type="search"]::-webkit-search-decoration { -webkit-appearance: none; appe
 
 /* 长按卡片只弹「不想看这条？」面板：别让 WebView 顺手选中/复制卡片文字 */
 .card, .big-card { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+/* 用户主页 / 合集页：小卡 / 大卡切换 */
+.list-mode { display: flex; gap: 8px; justify-content: flex-end; padding: 10px 12px 0; }
+.list-mode .lm {
+  border: 0; background: var(--bg-soft); color: var(--text-2);
+  font-size: 12px; padding: 5px 12px; border-radius: 99px;
+}
+.list-mode .lm.on { background: var(--accent-weak); color: var(--accent); font-weight: 600; }
+.big-list { display: flex; flex-direction: column; gap: 12px; padding: 10px 12px 0; }
+.res-cards { margin-top: 2px; }
+.res-empty { padding: 10px 2px; color: var(--sub); font-size: 12.5px; }

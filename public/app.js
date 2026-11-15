@@ -447,6 +447,63 @@
     return `<div class="empty"><div class="big">🍃</div><p>${esc(text)}</p>${retry ? '<button class="retry">重新加载</button>' : ''}</div>`;
   }
 
+  // ================= 卡片样式（用户主页 / 合集页可切大小卡） =================
+  // small = 瀑布流小卡（默认），big = 一整行的大卡（同关注页那种）
+  function cardMode(kind) {
+    const m = store.settings.cardMode || {};
+    return m[kind] === 'big' ? 'big' : 'small';
+  }
+
+  function cardModeBar(kind) {
+    const cur = cardMode(kind);
+    const btn = (mode, label) => `<button class="lm${cur === mode ? ' on' : ''}" data-mode="${mode}">${label}</button>`;
+    return `<div class="list-mode" id="list-mode" data-kind="${kind}">${btn('small', '小卡')}${btn('big', '大卡')}</div>`;
+  }
+
+  // 列表容器：大卡走 .big-list，小卡走 .masonry（ID 保持 masonry，别的逻辑还引用）
+  function feedShell(kind) {
+    return `${cardModeBar(kind)}
+      <div class="feed">
+        ${cardMode(kind) === 'big' ? '<div class="big-list" id="big-list"></div>' : '<div class="masonry" id="masonry"></div>'}
+        <div class="load-more" id="loadmore"></div><div id="sentinel" style="height:1px"></div>
+      </div>`;
+  }
+
+  function bindCardMode() {
+    const bar = $('#list-mode');
+    if (!bar) return;
+    const kind = bar.dataset.kind;
+    bar.addEventListener('click', (e) => {
+      const b = e.target.closest('.lm');
+      if (!b) return;
+      store.settings.cardMode = Object.assign({}, store.settings.cardMode, { [kind]: b.dataset.mode });
+      store.saveSettings();
+      render();
+    });
+  }
+
+  // 往当前视图里塞一条作品（大卡 or 小卡）
+  function addPostToFeed(m, post) {
+    if (!$('#big-list')) { if (m) m.add(cardEl(post)); return; }
+    $('#big-list').appendChild(bigCardEl(post));
+  }
+
+  // 搜索结果里的作品按瀑布流卡片显示（标签 / 用户仍然是行）
+  function mountPostCards(host, posts) {
+    if (!host) return;
+    const list = (posts || []).filter((p) => p && !isBlockedPost(p));
+    if (!list.length) {
+      host.innerHTML = `<div class="res-empty">${esc('这些作品都被本机屏蔽了')}</div>`;
+      return;
+    }
+    const grid = document.createElement('div');
+    grid.className = 'masonry res-masonry';
+    host.appendChild(grid);
+    const m = new Masonry(grid, colsFor());
+    for (const p of list) m.add(cardEl(p));
+    bindImages(host);
+  }
+
   // ================= 收藏按钮（事件委托到 document，避免视图重建后失效） =================
   document.addEventListener('click', async (e) => {
     const btn = e.target.closest('[data-save]');
@@ -2924,11 +2981,6 @@
         <span class="res-main"><b>${esc(b.nick || b.name)}</b><i>@${esc(b.name)}${b.intro ? ' · ' + esc(b.intro) : ''}</i></span>
         ${icon('chevron')}
       </a>`;
-    const postRow = (p) => `<a class="res-row res-post" href="#/post/${p.author.id}/${p.id}">
-        ${p.cover ? `<span class="res-cover"><img src="${esc(thumb(p.cover, 240))}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"></span>` : ''}
-        <span class="res-main"><b>${esc(p.title || '无标题')}</b><i>@${esc(p.author.nick || p.author.name)}</i></span>
-      </a>`;
-
     async function run(q) {
       const my = ++seq;
       results.innerHTML = '<div class="search-loading">搜索中…</div>';
@@ -2944,8 +2996,12 @@
         } else if (mode === 'post') {
           const d = await api('/api/search-posts', { q });
           if (my !== seq) return;
-          results.innerHTML = d.list.length ? `<div class="res-list">${d.list.map(postRow).join('')}</div>`
-            : emptyEl('没有找到相关作品（作品搜索需要登录 LOFTER 账号）', false);
+          if (!d.list.length) {
+            results.innerHTML = emptyEl('没有找到相关作品（作品搜索需要登录 LOFTER 账号）', false);
+          } else {
+            results.innerHTML = '<div class="res-cards" id="res-cards"></div>';
+            mountPostCards($('#res-cards'), d.list);
+          }
         } else {
           const [tags, blogs, posts] = await Promise.all([
             api('/api/search-tags', { q }).catch(() => ({ list: [] })),
@@ -2956,8 +3012,9 @@
           const blocks = [];
           if (tags.list.length) blocks.push(`<div class="res-sec"><div class="res-head">标签</div>${tags.list.slice(0, 5).map(tagRow).join('')}</div>`);
           if (blogs.list.length) blocks.push(`<div class="res-sec"><div class="res-head">用户</div>${blogs.list.slice(0, 5).map(blogRow).join('')}</div>`);
-          if (posts.list.length) blocks.push(`<div class="res-sec"><div class="res-head">作品</div>${posts.list.slice(0, 5).map(postRow).join('')}</div>`);
+          if (posts.list.length) blocks.push(`<div class="res-sec"><div class="res-head">作品</div><div class="res-cards" id="res-cards"></div></div>`);
           results.innerHTML = blocks.length ? blocks.join('') : emptyEl('没有找到相关内容，换个关键词试试', false);
+          if (posts.list.length) mountPostCards($('#res-cards'), posts.list.slice(0, 6));
         }
       } catch (e) {
         if (my === seq) results.innerHTML = emptyEl(e.message || '搜索失败', true);
