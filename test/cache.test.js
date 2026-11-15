@@ -42,10 +42,15 @@ test('磁盘持久化：新实例（模拟重启）能读到旧值', async () =>
   try {
     const a = new Cache(dir);
     a.set('post:1:2', { id: 2 }, 60000);
-    await sleep(120); // set() 是异步写盘
-
+    // set() 是异步写盘，机器忙的时候 120ms 不一定够，这里轮询等文件落盘
     const b = new Cache(dir);
-    assert.deepEqual(b.get('post:1:2', 60000), { id: 2 });
+    let got = null;
+    for (let i = 0; i < 30; i++) {
+      await sleep(100);
+      got = b.get('post:1:2', 60000);
+      if (got) break;
+    }
+    assert.deepEqual(got, { id: 2 });
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
