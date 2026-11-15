@@ -125,6 +125,9 @@
   const icon = (name, cls = '') =>
     `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[name] || ''}</svg>`;
 
+  // 版本号只在这里改一处；APK 的 AndroidManifest.xml 与 package.json 也要同步
+  const APP_VERSION = '1.0.0';
+
   // ================= 本地存储 =================
   const LS = 'lofter-lite:';
   function loadLS(key, fallback) {
@@ -899,7 +902,7 @@
     const cache = getCache(key);
 
     setHeader(`
-      <div class="brand"><b>LOFTER</b><span>v5.7</span></div>
+      <div class="brand"><b>LOFTER</b><span>v${APP_VERSION}</span></div>
       <div class="spacer"></div>
       <button class="icon-btn ${onlyTag ? 'accent' : ''}" id="btn-only" aria-label="只看标签">${icon('filter')}</button>
       <button class="icon-btn" id="btn-theme" aria-label="切换主题">${icon('moon')}</button>
@@ -3162,7 +3165,7 @@
       </div>
       <div class="list-card">
         <a class="list-row" href="#/diag">${icon('info')}诊断信息<span class="val">${icon('chevron')}</span></a>
-        <a class="list-row" href="#/about">${icon('info')}关于 LOFTER Lite<span class="val">v5.7 ${icon('chevron')}</span></a>
+        <a class="list-row" href="#/about">${icon('info')}关于 LOFTER Lite<span class="val">v${APP_VERSION} ${icon('chevron')}</span></a>
       </div>
       ${logged ? '<button class="me-logout" id="logout-btn">退出登录</button>' : ''}
       <div style="text-align:center;color:var(--sub);font-size:11px;padding:6px 0 26px">内容来自 LOFTER 公开接口 · 非官方客户端</div>`;
@@ -3822,35 +3825,35 @@
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
           <img src="icon.svg" width="52" height="52" style="border-radius:14px">
           <div><div style="font-size:19px;font-weight:800;color:var(--text)">LOFTER Lite</div>
-          <div style="font-size:12px;color:var(--sub)">v5.7 · 非官方的轻量客户端</div></div>
+          <div style="font-size:12px;color:var(--sub)">v${APP_VERSION} · 非官方客户端</div></div>
         </div>
-        <p style="color:var(--sub);font-size:12px;margin:0 0 16px">零依赖 · 无广告 · 不上传任何本机数据</p>
+        <p style="color:var(--sub);font-size:12px;margin:0 0 16px">没有广告 · 没有推送 · 不收集你的数据</p>
 
-        ${sec('它是什么',
-          '一个只保留「刷和看」的 LOFTER 界面。两种形态共用一套前端：<b>本地网页版</b>（Node 起一个本地服务，浏览器打开，只读公开内容）和 <b>Android APK</b>（WebView 壳 + 原生桥，可以带登录态做点赞、关注、评论）。')}
+        ${sec('这是个什么 App',
+          '一个更轻的 LOFTER：只有「看」和「你自己的操作」，没有商城、会员、开屏广告和一堆用不上的入口。打开就是内容，看完就能退出。')}
 
-        ${sec('现在能做什么',
+        ${sec('你能在这里做',
           `<ul style="margin:6px 0 0;padding-left:18px">
-            ${item('推荐流', '瀑布流 + 标签筛选；视频帖 16:9 封面带时长，多图帖有缩略预览')}
-            ${item('关注流', '分「动态 / 订阅标签」，包含关注的人的推荐，可开关；首页只加载 3 页，滚到底再按需加载')}
-            ${item('订阅标签', '大卡片 + 三张缩略图，缩略图缓存在本机，进页面立刻出图；纯文字标签有占位块')}
-            ${item('作品详情', '多图 / 视频播放、正文清洗防 XSS、评论与楼中楼、喜欢、关注、系统分享、在浏览器打开原文')}
-            ${item('我的页', '账号的关注 / 粉丝 / 喜欢 / 收藏 / 推荐、关注与粉丝列表、收藏夹与收藏夹内作品、账号收藏；本机收藏与浏览历史')}
-            ${item('屏蔽体系', '标签屏蔽、屏蔽用户（只在这台设备隐藏，不通知对方）、拉黑名单（账号级黑名单）；名单可导入导出成 JSON')}
-            ${item('阅读体验', '深色模式、返回上一页回到原来的滑动位置、清除本地记录')}
+            ${item('刷推荐、关注流', '瀑布流看图，视频帖有封面和时长，多图帖能预览')}
+            ${item('按标签看', '订阅的标签会排在关注页，缩略图缓存在手机里，下次打开立刻有图')}
+            ${item('看作品和评论', '多图和视频、发布与编辑时间、所属合集、评论与楼中楼，评论可切热门 / 最新，图片评论能点开看大图')}
+            ${item('搜内容', '搜标签、用户、作品，作品结果直接是作品卡片')}
+            ${item('自己的账号', '关注 / 粉丝 / 喜欢 / 收藏 / 推荐都能点进去看列表；也可以点赞、关注、评论、分享')}
+            ${item('存图和防丢', '长按图片能保存到相册；返回上一页会回到原来的位置；主题可跟随系统深色')}
+            ${item('不想看的东西', '屏蔽标签、关键词、某个人、拉黑名单，都在「我的 → 屏蔽」里管，导入导出可备份')}
           </ul>`)}
 
-        ${sec('不提供的功能',
-          '没有发布入口：LOFTER 没有开放第三方发布接口，网页版发布页在非官方客户端里只会引导下载官方 App。也没有会员、广告、周边商城、AI 创作这类模块。')}
+        ${sec('这里没有的',
+          '没有发布作品入口（LOFTER 没开放第三方发布接口）、没有私信、没有会员和广告。需要这些请用官方 App。')}
 
-        ${sec('数据从哪来',
-          '内容全部来自 LOFTER 的公开接口，版权归原作者所有。本机数据（屏蔽名单、本机收藏、浏览历史、标签缩略图缓存）只保存在这台设备上，不会上传；APK 里的登录 Cookie 由系统 WebView 管理，可以随时在「我的 → 退出登录」清掉。')}
+        ${sec('你的数据在哪',
+          '屏蔽名单、本机收藏、浏览历史、标签缩略图缓存都只存在这台手机上，不会上传到任何服务器。登录 Cookie 由系统浏览器组件保存，退出登录就会清掉。')}
 
-        ${sec('已知限制',
-          '上游接口会变：某页突然打不开时先下拉刷新；点赞等写操作偶尔会被 LOFTER 的风控要求滑块验证，属于上游限制，不是客户端坏了。接口失效时请以官方 App 为准。')}
+        ${sec('遇到问题怎么办',
+          '页面空白先下拉刷新；点赞或关注被要求「滑动验证」是 LOFTER 的风控，拖对拼图就能继续。如果某个功能突然不能用了，通常是官方接口改了，以官方 App 为准。')}
 
         <p style="color:var(--sub);font-size:12px;margin-top:22px">
-          网页版把本页「添加到主屏幕」就能像 App 一样全屏打开；APK 用 <code style="font-size:11.5px">npm run apk</code> 自己构建，零依赖、不需要 Android Studio。
+          本应用由第三方开发，与 LOFTER 官方无关；所有内容与版权归 LOFTER 及原作者所有。喜欢这个 App 的话，数据都在你自己的账号里，换客户端不会丢。
         </p>
       </div>`;
   }

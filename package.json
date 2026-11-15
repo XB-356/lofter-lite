@@ -1,6 +1,6 @@
 {
   "name": "lofter-lite",
-  "version": "1.0.1",
+  "version": "1.0.0",
   "private": true,
   "description": "只留内容的 LOFTER 第三方客户端",
   "main": "server.js",
