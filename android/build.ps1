@@ -87,13 +87,13 @@ try {
     $srcs += (Get-ChildItem build\gen -Recurse -Filter *.java | ForEach-Object { $_.FullName })
     $srcs += (Get-ChildItem src -Recurse -Filter *.java | ForEach-Object { $_.FullName })
     # --release 8 限制只能用 Java 8 API；android.jar 通过 classpath 提供 android.* 类
-    & $javacExe -encoding UTF-8 --release 8 -nowarn -Xlint:-options -classpath $AJ -d build\classes $srcs
+    & $javacExe -J-Xmx512m -encoding UTF-8 --release 8 -nowarn -Xlint:-options -classpath $AJ -d build\classes $srcs
     if ($LASTEXITCODE -ne 0) { Die 'javac 编译失败' }
 
     # ---------- d8 转 dex ----------
     Step 'd8: class → dex'
     $classes = @(Get-ChildItem build\classes -Recurse -Filter *.class | ForEach-Object { $_.FullName })
-    & $javaExe -cp (Join-Path $BT 'lib\d8.jar') com.android.tools.r8.D8 --release --min-api 21 --lib $AJ --output build\dex $classes
+    & $javaExe -Xmx512m -cp (Join-Path $BT 'lib\d8.jar') com.android.tools.r8.D8 --release --min-api 21 --lib $AJ --output build\dex $classes
     if ($LASTEXITCODE -ne 0) { Die 'd8 失败' }
 
     # ---------- 打包 APK ----------
