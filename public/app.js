@@ -2066,7 +2066,9 @@
     closeLightbox();
   });
   $('.lb-close', lightbox).addEventListener('click', closeLightbox);
-  $('#lb-save')?.addEventListener('click', async () => {
+  $('#lb-save')?.addEventListener('click', async (e) => {
+    // 别让点击冒泡到 lightbox 的「点空白关闭」处理器，保存完还能继续看
+    e.stopPropagation();
     const i = Math.round(lbTrack.scrollLeft / (lbTrack.clientWidth || 1));
     const cur = lbImgs[Math.max(0, Math.min(i, lbImgs.length - 1))];
     if (!cur) return;
