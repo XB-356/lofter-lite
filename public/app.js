@@ -1975,6 +1975,17 @@
     const body = document.getElementById('cmt-body');
     if (!body) return;
     let offset = 0, loading = false, done = false;
+    // 热门评论和普通列表会重叠（同一条既在 hotList 又在 list），翻页时也可能重复，
+    // 所以按 id 记一份已经渲染过的，插之前先过一遍。
+    const seen = new Set();
+
+    function fresh(list) {
+      return (list || []).filter((c) => {
+        if (!c || !c.id || seen.has(c.id)) return false;
+        seen.add(c.id);
+        return true;
+      });
+    }
 
     async function fetchPage(first) {
       if (loading || done) return;
@@ -1982,12 +1993,14 @@
       try {
         const data = await api('/api/comments', { blogId: post.author.id, postId: post.id, offset });
         if (!document.getElementById('cmt-body')) return;
+        const hotList = first ? fresh(data.hot) : [];
+        const pageList = fresh(data.list);
         if (first) {
           body.innerHTML = '';
-          if (data.hot && data.hot.length) {
+          if (hotList.length) {
             const hot = document.createElement('div');
             hot.className = 'cmt-hot';
-            hot.innerHTML = `<div class="cmt-label">热门评论</div>${data.hot.map(commentEl).join('')}`;
+            hot.innerHTML = `<div class="cmt-label">热门评论</div>${hotList.map(commentEl).join('')}`;
             body.appendChild(hot);
           }
           const list = document.createElement('div');
@@ -2001,13 +2014,13 @@
           body.appendChild(more);
         }
         const list = document.getElementById('cmt-list');
-        if (list && data.list.length) list.insertAdjacentHTML('beforeend', data.list.map(commentEl).join(''));
+        if (list && pageList.length) list.insertAdjacentHTML('beforeend', pageList.map(commentEl).join(''));
         offset = data.next;
         if (offset < 0 || !data.list.length) {
           done = true;
           document.getElementById('cmt-more')?.remove();
         }
-        if (first && !(data.hot || []).length && !data.list.length) {
+        if (first && !hotList.length && !pageList.length) {
           body.innerHTML = '<div class="cmt-empty">还没有评论，去 LOFTER 抢个沙发</div>';
         }
       } catch (err) {
