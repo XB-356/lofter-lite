@@ -2695,7 +2695,7 @@
           <div class="me-profile-main">
             <h2>${esc((profile && profile.nick) || 'LOFTER 用户')}</h2>
             <p class="me-sub">${esc(subMeta.join(' · ') || 'LOFTER 已登录')}</p>
-            ${meta.length ? `<p class="me-meta">${esc(meta.join('　'))}</p>` : ''}
+            ${meta.length ? `<p class="me-meta">${esc(meta.join('\n'))}</p>` : ''}
             ${intro ? `<div class="me-intro-wrap">
               <p class="me-intro" id="me-intro">${esc(intro)}</p>
               <button class="me-intro-toggle" id="me-intro-toggle" hidden>展开</button>
