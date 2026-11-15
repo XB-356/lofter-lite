@@ -385,7 +385,7 @@
     el.innerHTML = `
       ${(post.thumbs && post.thumbs.length >= 2)
         ? `<a class="big-thumb-strip" href="#/post/${post.originBlogId || post.author.id}/${post.id}">
-            ${post.thumbs.slice(0, 3).map((src, i) => `<span class="thumb-wrap"><img src="${esc(thumb(src, 320))}" alt="" loading="lazy" data-aspect>${i === 2 && post.photoCount > 3 ? `<b class="thumb-more">+${post.photoCount - 3}</b>` : ''}</span>`).join('')}
+            ${post.thumbs.slice(0, 6).map((src, i, arr) => `<span class="thumb-wrap"><img src="${esc(thumb(src, 720))}" alt="" loading="lazy" data-aspect>${i === arr.length - 1 && post.photoCount > arr.length ? `<b class="thumb-more">+${post.photoCount - arr.length}</b>` : ''}</span>`).join('')}
           </a>`
         : cover ? `<a class="big-cover" href="#/post/${post.originBlogId || post.author.id}/${post.id}">
             <img src="${esc(cover)}" style="aspect-ratio:${ratio.toFixed(3)}" loading="lazy" data-aspect>

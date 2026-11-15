@@ -1145,25 +1145,38 @@ body.immersive #app { padding-bottom: 0; }
 }
 .tag-thumb.empty b { color: hsl(var(--h, 210), 30%, 62%); font-size: 18px; font-weight: 800; }
 
-/* 多图缩略条：一排 3 张缩略图，第 3 张右下角标 +N（不横向滑动、不放大，免得作者水印被拉大） */
+/* 多图缩略条：横向滑动，每张占宽度的 77.3%（留出下一张的边，提示还能滑） */
 .big-thumb-strip {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
+  display: flex;
+  gap: 8px;
   padding: 10px 12px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
   background: var(--card);
+  scrollbar-width: none;
 }
-.big-thumb-strip .thumb-wrap { position: relative; display: block; }
+.big-thumb-strip::-webkit-scrollbar { display: none; }
+.big-thumb-strip .thumb-wrap {
+  position: relative;
+  display: block;
+  flex: none;
+  width: 77.3%;
+  scroll-snap-align: start;
+}
 .big-thumb-strip img {
   width: 100%;
-  aspect-ratio: 1 / 1;
+  height: auto;
+  max-height: 420px;
   object-fit: cover;
-  border-radius: 8px;
+  object-position: center top;
+  border-radius: 10px;
   background: var(--bg-soft);
   display: block;
 }
 .thumb-more {
-  position: absolute; right: 6px; bottom: 6px;
+  position: absolute; right: 8px; bottom: 8px;
   background: rgba(0, 0, 0, 0.55); color: #fff;
   font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 99px;
   backdrop-filter: blur(4px);
