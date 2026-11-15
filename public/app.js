@@ -993,6 +993,7 @@
     appendSkeletons(m, 6);
 
     let offset = 0, loading = false, done = false;
+    let shown = 0, emptyPages = 0;
     const token = navId;
 
     async function load() {
@@ -1005,16 +1006,29 @@
         $('#masonry').querySelectorAll('.skeleton').forEach((s) => s.remove());
         if (!data.posts.length) {
           done = true;
-          if (!offset) {
+          if (!offset && !shown) {
             viewEl.innerHTML = `<div class="page-head"><div class="tag-hero"><div class="meta"><div class="n">#${esc(name)}</div></div></div></div>${emptyEl('这个话题下暂时没有公开内容', false)}`;
             return;
           }
         } else {
           currentFeedExtra.push(...data.posts);
           if (currentFeedExtra.length > 200) currentFeedExtra = currentFeedExtra.slice(-200);
-          for (const p of data.posts) if (!isBlockedPost(p)) m.add(cardEl(p));
+          for (const p of data.posts) if (!isBlockedPost(p)) { m.add(cardEl(p)); shown++; }
           bindImages(viewEl);
           offset = data.nextOffset;
+        }
+        // 作品全被「标签屏蔽 / 屏蔽用户」过滤掉时页面会剩下空白：先把后面几页翻完，
+        // 翻完还是空的就给一句说明，别让用户对着空页面以为卡住了
+        if (!shown) {
+          // 只多翻 3 页：上游可能一直回 hasMore=true，不能无限刷
+          if (!done && emptyPages < 3) { emptyPages++; loading = false; return load(); }
+          done = true;
+          const blocked = (store.settings.blockedTags || []).indexOf(name) >= 0;
+          viewEl.querySelector('.masonry').innerHTML = blocked
+            ? emptyEl(`已屏蔽 #${name}，这个标签下的作品不会显示。到「我的 → 标签屏蔽」里可以取消。`, false)
+            : emptyEl('这个标签下的作品都被屏蔽标签或屏蔽用户过滤掉了', false);
+          $('#loadmore').innerHTML = '';
+          return;
         }
         $('#loadmore').innerHTML = done ? (offset ? '已经到底啦 · 休息一下' : '') : '';
       } catch (err) {
