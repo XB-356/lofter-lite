@@ -96,6 +96,9 @@ async function blogHome(name, { offset = 0 } = {}) {
       url: `https://${name}.lofter.com`,
     },
     posts,
+    // 和真实数据对齐：置顶作品 + 最近一篇作品的 IP 属地（他人主页要用）
+    pinned: offset === 0 && posts[0] ? posts[0] : null,
+    ip: offset === 0 ? '浙江' : '',
     nextOffset: offset + items.length,
     hasMore: offset + items.length < TOTAL,
   };

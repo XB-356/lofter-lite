@@ -1243,13 +1243,47 @@
           });
           const head = document.createElement('div');
           head.className = 'page-head';
+          const bMeta = [];
+          if (b.name) bMeta.push('LOFTER ID：' + b.name);
+          if (data.ip) bMeta.push('IP 属地：' + data.ip);
           head.innerHTML = `
-            <div class="tag-hero">
-              <img class="cover" src="${esc(b.avatar)}" alt="" style="border-radius:50%">
-              <div class="meta"><h1 style="font-size:19px">${esc(b.nick)}</h1>
-              <div class="sub">${esc(b.intro || b.name)}</div></div>
-            </div>`;
+            <div class="blog-hero">
+              ${b.avatar
+                ? `<img class="blog-ava" src="${esc(thumb(b.avatar, 200))}" alt="" onerror="this.style.visibility='hidden'">`
+                : `<div class="blog-ava blog-ava-ph">${icon('user')}</div>`}
+              <div class="blog-main">
+                <h1 class="blog-nick">${esc(b.nick || b.name)}</h1>
+                ${bMeta.length ? `<p class="me-meta">${esc(bMeta.join('\n'))}</p>` : ''}
+                ${b.intro ? `<div class="me-intro-wrap">
+                  <p class="me-intro" id="blog-intro">${esc(b.intro)}</p>
+                  <button class="me-intro-toggle" id="blog-intro-toggle" hidden>展开</button>
+                </div>` : ''}
+              </div>
+            </div>
+            ${data.pinned ? `<div class="pinned-card">
+              <div class="pinned-label">置顶作品</div>
+              <a class="pinned-link" href="#/post/${data.pinned.author.id}/${data.pinned.id}">
+                ${data.pinned.cover ? `<img class="pinned-cover" src="${esc(thumb(data.pinned.cover, 240))}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : ''}
+                <div class="pinned-main">
+                  <div class="pinned-title">${esc(data.pinned.title || data.pinned.digest || '置顶作品')}</div>
+                  <div class="pinned-sub">${esc((data.pinned.digest && data.pinned.title) ? data.pinned.digest : '')}</div>
+                </div>
+                ${icon('chevron')}
+              </a>
+            </div>` : ''}`;
           viewEl.insertBefore(head, viewEl.firstChild);
+          // 简介超过两行才给「展开」，短简介不显示按钮
+          const bIntroEl = $('#blog-intro');
+          const bIntroBtn = $('#blog-intro-toggle');
+          if (bIntroEl && bIntroBtn) {
+            const overflow = bIntroEl.scrollHeight > bIntroEl.clientHeight + 2;
+            bIntroBtn.hidden = !overflow;
+            if (overflow) bIntroEl.classList.add('clamped');
+            bIntroBtn.addEventListener('click', () => {
+              const open = bIntroEl.classList.toggle('open');
+              bIntroBtn.textContent = open ? '收起' : '展开';
+            });
+          }
           // 博主有合集时给个入口（合集是作者自己的专栏，和收藏夹无关）
           if (NATIVE) {
             api('/api/blog-collections', { name: b.name }).then((d) => {
