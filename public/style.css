@@ -698,6 +698,45 @@ body.immersive #app { padding-bottom: 0; }
 .btn.primary { background: var(--accent); color: #fff; }
 .btn.ghost { background: transparent; color: var(--sub); }
 .btn.muted-on { background: var(--accent-weak); color: var(--accent); }
+/* 顶栏里的小胶囊按钮（详情页「关注」） */
+.btn.mini {
+  flex: none; height: 30px; padding: 0 11px; border-radius: 99px;
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 12.5px; background: var(--bg-soft); color: var(--text-2);
+}
+.btn.mini svg { width: 14px; height: 14px; }
+.btn.mini.on { background: var(--accent-weak); color: var(--accent); }
+
+/* 人机验证（风控滑块）：底图 320x160，拼图块按 82px 宽等比缩放 */
+.cap-title { font-size: 17px; font-weight: 800; }
+.cap-tip { font-size: 12.5px; color: var(--sub); margin: 6px 0 12px; line-height: 1.55; }
+.cap-stage {
+  position: relative; width: 100%; aspect-ratio: 2 / 1;
+  border-radius: 12px; overflow: hidden; background: var(--bg-soft);
+}
+.cap-bg { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cap-piece {
+  position: absolute; top: 0; left: 0; height: 100%; width: auto;
+  will-change: transform; pointer-events: none;
+}
+.cap-track {
+  position: relative; height: 42px; margin-top: 14px; border-radius: 99px;
+  background: var(--bg-soft); display: flex; align-items: center; overflow: hidden;
+}
+.cap-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--accent-weak); }
+.cap-thumb {
+  position: relative; width: 42px; height: 42px; border-radius: 50%;
+  background: var(--card); box-shadow: 0 1px 5px rgba(0, 0, 0, 0.18);
+  display: grid; place-items: center; color: var(--sub);
+  touch-action: none; z-index: 1; cursor: grab;
+}
+.cap-thumb svg { width: 16px; height: 16px; }
+.cap-thumb.busy { opacity: 0.55; }
+.cap-hint {
+  position: absolute; left: 0; right: 0; padding-left: 44px; text-align: center;
+  font-size: 12px; color: var(--sub); pointer-events: none; transition: opacity 0.2s;
+}
+.cap-foot { margin-top: 14px; display: flex; }
 
 /* ============ 空 / 错误 / 加载 ============ */
 .empty {

@@ -962,6 +962,48 @@
 
   // 点赞：必须 POST 表单，参数是 liketype=like|unlike + postid + blogid + scene
   // （GET + like=1 的老写法上游只回 4101，2026-11 真机确认）
+  // ---------------- 滑块验证（风控 4071） ----------------
+  // 桥里没有通用的「任意方法 + 回调」入口，这里复用 http 那套 id 分片回调，
+  // 直接调 Bridge 暴露的 captchaGet / captchaCheck。
+  function nativeCall(method, args) {
+    return new Promise((resolve, reject) => {
+      const fn = N && N[method];
+      if (typeof fn !== 'function') return reject(new Error('当前客户端版本不支持验证码'));
+      const id = 'c' + (++seq);
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        reject(new Error('验证码请求超时'));
+      }, 30000);
+      pending.set(id, { parts: [], resolve, reject, timer });
+      try {
+        fn.apply(N, [id].concat(args || []));
+      } catch (e) {
+        pending.delete(id);
+        clearTimeout(timer);
+        reject(e);
+      }
+    });
+  }
+
+  async function captchaChallenge() {
+    const text = await nativeCall('captchaGet', []);
+    let doc;
+    try { doc = JSON.parse(text); } catch (e) { throw new Error('验证码返回异常'); }
+    if (doc.__error) throw new Error('获取验证码失败（' + doc.__error + '）');
+    if (doc.code !== 0 || !doc.data || !doc.data.id) throw new Error(doc.msg || '获取验证码失败');
+    return doc.data; // { id, type, bg, front }
+  }
+
+  async function captchaVerify(challengeId, xPos) {
+    const text = await nativeCall('captchaCheck', [String(challengeId), Math.round(xPos)]);
+    let doc;
+    try { doc = JSON.parse(text); } catch (e) { throw new Error('验证失败，请重试'); }
+    if (doc.__error) throw new Error('验证失败（' + doc.__error + '）');
+    const ok = !!(doc.data && doc.data.success) || doc.code === 0;
+    if (!ok) throw new Error((doc.data && doc.data.msg) || doc.msg || '验证没通过，重新拖一次');
+    return true;
+  }
+
   async function likePost(blogId, postId, like) {
     if (!(await probeLogin())) throw new Error('请先登录 LOFTER');
     const url = 'https://api.lofter.com/v1.1/like.api?product=' + PRODUCT;
@@ -983,7 +1025,9 @@
     const ok = !!(j && (meta.status === 200 || j.code === 0));
     if (ok) return { ok: true };
     if (meta.status === 4071) {
-      throw new Error('LOFTER 要求滑动验证（风控），请稍后再试，或先在官方 App 里点一次喜欢');
+      const err = new Error('LOFTER 要求人机验证');
+      err.needCaptcha = true;
+      throw err;
     }
     // 4102「参数异常」：可能是已经处于目标状态（重复点赞/取消），也可能真的没成功。
     // 用详情里的 liked 判断，别把失败当成功（曾经就是这么静默丢点赞的）。
@@ -1026,6 +1070,11 @@
     let j;
     try { j = JSON.parse(text); } catch (e) { throw new Error('关注返回异常'); }
     const ok = !!(j && ((j.meta && j.meta.status === 200) || j.code === 0));
+    if (j && j.meta && j.meta.status === 4071) {
+      const err = new Error('LOFTER 要求人机验证');
+      err.needCaptcha = true;
+      throw err;
+    }
     if (!ok) throw new Error((j && j.meta && j.meta.msg) || (j && j.msg) || '关注失败');
     return { ok };
   }

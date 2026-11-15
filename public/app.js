@@ -876,7 +876,132 @@
     $('.sheet', sheetEl).innerHTML = `<div class="grab"></div>${html}`;
     sheetEl.hidden = false;
   }
-  function closeSheet() { sheetEl.hidden = true; }
+  let captchaCancel = null;
+  function closeSheet() {
+    sheetEl.hidden = true;
+    if (captchaCancel) {
+      const fn = captchaCancel;
+      captchaCancel = null;
+      fn();
+    }
+  }
+
+  // ================= 人机验证（风控 4071） =================
+  // LOFTER 在点赞/关注被风控时会回 4071，要求「滑动滑块」。
+  // 验证码是 320x160 的底图 + 82px 宽的拼图块，客户端只需要把块拖到缺口、把 x 坐标报回去。
+  const CAP_BG_W = 320;
+  const CAP_PIECE_W = 82;
+  function openCaptcha() {
+    return new Promise(async (resolve, reject) => {
+      let data;
+      try {
+        data = await api('/api/captcha');
+      } catch (e) {
+        toast(e.message || '获取验证码失败');
+        return reject(e);
+      }
+      let settled = false;
+      let cleanup = () => {};
+      const finish = (ok, err) => {
+        if (settled) return;
+        settled = true;
+        captchaCancel = null;
+        cleanup();
+        sheetEl.hidden = true;
+        ok ? resolve(true) : reject(err || new Error('已取消验证'));
+      };
+      captchaCancel = () => finish(false);
+      openSheet(`
+        <div class="cap-title">人机验证</div>
+        <div class="cap-tip">LOFTER 认为操作太快了。把拼图拖到缺口位置，松开即可。</div>
+        <div class="cap-stage" id="cap-stage">
+          <img class="cap-bg" src="data:image/jpeg;base64,${data.bg}" alt="">
+          <img class="cap-piece" id="cap-piece" src="data:image/png;base64,${data.front}" alt="">
+        </div>
+        <div class="cap-track" id="cap-track">
+          <div class="cap-fill" id="cap-fill"></div>
+          <div class="cap-thumb" id="cap-thumb">${icon('chevron')}</div>
+          <span class="cap-hint" id="cap-hint">按住圆钮向右拖 →</span>
+        </div>
+        <div class="cap-foot"><button class="btn ghost" id="cap-cancel">取消</button></div>
+      `);
+      const stage = $('#cap-stage');
+      const piece = $('#cap-piece');
+      const track = $('#cap-track');
+      const thumb = $('#cap-thumb');
+      const fill = $('#cap-fill');
+      const hint = $('#cap-hint');
+      const stageW = stage.clientWidth || 300;
+      const scale = stageW / CAP_BG_W;
+      const pieceW = CAP_PIECE_W * scale;
+      const trackMax = Math.max(0, stageW - pieceW);
+      const maxPos = CAP_BG_W - CAP_PIECE_W;
+      let dragging = false, startX = 0, fromPos = 0, pos = 0;
+      const paint = () => {
+        const px = pos * scale;
+        piece.style.transform = 'translateX(' + px + 'px)';
+        thumb.style.transform = 'translateX(' + (px / (CAP_BG_W - CAP_PIECE_W)) * trackMax + 'px)';
+        fill.style.width = (px + thumb.offsetWidth / 2) + 'px';
+      };
+      const pointerPos = (e) => (e.touches ? e.touches[0].clientX : e.clientX);
+      const onDown = (e) => {
+        dragging = true;
+        startX = pointerPos(e);
+        fromPos = pos;
+        hint && (hint.style.opacity = '0');
+        e.preventDefault();
+      };
+      const onMove = (e) => {
+        if (!dragging) return;
+        const dx = pointerPos(e) - startX;
+        const travel = (fromPos * scale + dx) / scale;
+        pos = Math.max(0, Math.min(maxPos, travel));
+        paint();
+        e.preventDefault();
+      };
+      const onUp = async () => {
+        if (!dragging) return;
+        dragging = false;
+        thumb.classList.add('busy');
+        try {
+          await api('/api/captcha-check', { challengeId: data.id, x: Math.round(pos) });
+          finish(true);
+          toast('验证通过');
+        } catch (err) {
+          thumb.classList.remove('busy');
+          toast(err.message || '验证没通过，再拖一次');
+        }
+      };
+      thumb.addEventListener('touchstart', onDown, { passive: false });
+      thumb.addEventListener('mousedown', onDown);
+      document.addEventListener('touchmove', onMove, { passive: false });
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('touchend', onUp);
+      document.addEventListener('mouseup', onUp);
+      cleanup = () => {
+        document.removeEventListener('touchmove', onMove);
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('touchend', onUp);
+        document.removeEventListener('mouseup', onUp);
+      };
+      $('#cap-cancel')?.addEventListener('click', () => finish(false));
+      requestAnimationFrame(() => {
+        paint();
+      });
+    });
+  }
+
+  // 写操作遇到 4071 就过一次滑块验证再重试一次
+  async function withCaptcha(fn) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (!e || !e.needCaptcha) throw e;
+      await openCaptcha();
+      return await fn();
+    }
+  }
+
   sheetEl.addEventListener('click', (e) => {
     const opt = e.target.closest('[data-theme-opt]');
     if (opt) { setTheme(opt.dataset.themeOpt); closeSheet(); return; }
@@ -1545,7 +1670,7 @@
       const want = !liked;
       likeBtn.disabled = true;
       try {
-        await api('/api/like', { blogId: targetBlogId, postId: post.id, like: want ? '1' : '0' });
+        await withCaptcha(() => api('/api/like', { blogId: targetBlogId, postId: post.id, like: want ? '1' : '0' }));
         liked = want;
         likeBtn.classList.toggle('on', liked);
         likeBtn.querySelector('span').textContent = liked ? '已喜欢' : '喜欢';
@@ -1559,10 +1684,11 @@
     });
     $('#act-follow')?.addEventListener('click', async () => {
       try {
-        await api('/api/follow-blog', { blogId: post.author.id, domain: post.author.name, follow: following ? '0' : '1' });
+        await withCaptcha(() => api('/api/follow-blog', { blogId: post.author.id, domain: post.author.name, follow: following ? '0' : '1' }));
         following = !following;
         $('#act-follow').classList.toggle('on', following);
         $('#act-follow span').textContent = following ? '已关注' : '关注';
+        setFollowTop(following);
         toast(following ? '已关注' : '已取消关注');
       } catch (e) { toast(e.message); }
     });

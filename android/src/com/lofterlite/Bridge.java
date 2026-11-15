@@ -27,11 +27,19 @@ import java.io.FileOutputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.security.KeyFactory;
+import java.security.PublicKey;
+import java.security.spec.X509EncodedKeySpec;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+
+import javax.crypto.Cipher;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 
 /**
  * 网页与原生之间的桥：
@@ -119,8 +127,131 @@ public class Bridge {
         });
     }
 
-    /** 登录 Cookie 可能只落在 www.lofter.com，这里把多域名的 Cookie 合并后一起发给接口 */
-    private String mergedCookie(String url) {
+    // ---------------------------------------------------------------- 滑块验证
+    // LOFTER 的写接口（点赞/关注/评论）被风控拦下时会回 meta.status=4071「请滑动滑块进行身份验证」。
+    // 验证码走 captcha.lofter.com：GET /captcha/get?type=jigsaw 拿底图与拼图块，
+    // 用户拖动滑块后 POST /captcha/check，请求体是 AES-CBC 加密的 {id,type,data:{xPos}}，
+    // 头部 X-Encseckey 是 RSA 加密的 "key-iv"。过了之后原请求重发一次就能成功。
+    private static final String CAPTCHA_URL = "https://captcha.lofter.com";
+    private static final String CAPTCHA_RSA_PUBLIC_KEY =
+            "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAm4re9B8pjX71Up+b97dvV41bEvNTD0e7aaMyPr8FTHkINSrrGqXjz4pQ6x8AbioULXYIrzcMO3LyXolLcjE/+0Ubx8KMu30CS2D7TVHEkaZKqz5EKOgWFeepAL6++klyjXO+vVWSDjb8R6g1VoQKh9MPxLJGqXoFOh9cDahdDRLH1M4a8XboWwljx4CM+vHAuDAwY7i3R4E+bsE+GW5LI7zt/rnTF4tnt0CFazl65SiXthyPJglwCZOF2SLs8JJCrknVoWeDyGBMmQ/0gghK4VMAyFcxHCs8y4v7HtOEsRvS4fksSzLSpyNkhGGuNKHk5tBm5L5m6vApmvUYP6QSdwIDAQAB";
+
+    private static final String ALNUM = "abcdefghijklmnopqrstuvwxyz0123456789";
+
+    private static String randomKey(int len) {
+        Random r = new Random();
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < len; i++) sb.append(ALNUM.charAt(r.nextInt(ALNUM.length())));
+        return sb.toString();
+    }
+
+    /** 拉一张拼图验证码（返回上游 JSON 原文，含 data.id / data.bg / data.front） */
+    @JavascriptInterface
+    public void captchaGet(final String id) {
+        pool.execute(new Runnable() {
+            @Override
+            public void run() {
+                int status = -1;
+                String text = "";
+                try {
+                    HttpURLConnection conn = (HttpURLConnection) new URL(CAPTCHA_URL + "/captcha/get?type=jigsaw").openConnection();
+                    conn.setRequestMethod("GET");
+                    conn.setConnectTimeout(15000);
+                    conn.setReadTimeout(20000);
+                    conn.setRequestProperty("User-Agent", "LOFTER-Android 8.0.12 (23127PN0CC; Android 14; null) WIFI");
+                    conn.setRequestProperty("Accept", "*/*");
+                    status = conn.getResponseCode();
+                    InputStream is = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
+                    ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                    if (is != null) {
+                        byte[] buf = new byte[8192];
+                        int n;
+                        while ((n = is.read(buf)) > 0) bos.write(buf, 0, n);
+                        is.close();
+                    }
+                    text = bos.toString("UTF-8");
+                } catch (Exception e) {
+                    status = -1;
+                    text = "{\"__error\":\"" + e.getClass().getSimpleName() + "\"}";
+                }
+                deliver(id, status, text);
+            }
+        });
+    }
+
+    /** 提交滑块位置（xPos 用底图原始像素坐标），成功后返回解密后的上游 JSON */
+    @JavascriptInterface
+    public void captchaCheck(final String id, final String challengeId, final int xPos) {
+        pool.execute(new Runnable() {
+            @Override
+            public void run() {
+                int status = -1;
+                String text = "";
+                String rawKey = randomKey(16);
+                String rawIv = randomKey(16);
+                try {
+                    String plain = "{\"id\":\"" + challengeId + "\",\"type\":\"jigsaw\",\"data\":{\"xPos\":" + xPos + "}}";
+
+                    // 1) AES-CBC/PKCS5 加密请求体
+                    Cipher aes = Cipher.getInstance("AES/CBC/PKCS5Padding");
+                    aes.init(Cipher.ENCRYPT_MODE,
+                            new SecretKeySpec(rawKey.getBytes("UTF-8"), "AES"),
+                            new IvParameterSpec(rawIv.getBytes("UTF-8")));
+                    byte[] cipherBytes = aes.doFinal(plain.getBytes("UTF-8"));
+
+                    // 2) RSA 公钥加密 "key-iv" 作为 X-Encseckey
+                    byte[] pubBytes = android.util.Base64.decode(CAPTCHA_RSA_PUBLIC_KEY, android.util.Base64.DEFAULT);
+                    PublicKey pub = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(pubBytes));
+                    Cipher rsa = Cipher.getInstance("RSA/ECB/PKCS1Padding");
+                    rsa.init(Cipher.ENCRYPT_MODE, pub);
+                    String encseckey = android.util.Base64.encodeToString(
+                            rsa.doFinal((rawKey + "-" + rawIv).getBytes("UTF-8")),
+                            android.util.Base64.NO_WRAP);
+
+                    HttpURLConnection conn = (HttpURLConnection) new URL(CAPTCHA_URL + "/captcha/check").openConnection();
+                    conn.setRequestMethod("POST");
+                    conn.setDoOutput(true);
+                    conn.setConnectTimeout(15000);
+                    conn.setReadTimeout(20000);
+                    conn.setRequestProperty("User-Agent", "LOFTER-Android 8.0.12 (23127PN0CC; Android 14; null) WIFI");
+                    conn.setRequestProperty("Accept", "*/*");
+                    conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                    conn.setRequestProperty("X-Encseckey", encseckey);
+                    OutputStream os = conn.getOutputStream();
+                    os.write(cipherBytes);
+                    os.close();
+
+                    status = conn.getResponseCode();
+                    InputStream is = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
+                    ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                    if (is != null) {
+                        byte[] buf = new byte[8192];
+                        int n;
+                        while ((n = is.read(buf)) > 0) bos.write(buf, 0, n);
+                        is.close();
+                    }
+                    byte[] respBytes = bos.toByteArray();
+
+                    // 3) 响应也是 AES 加密的，用同一对 key/iv 解回来
+                    try {
+                        Cipher dec = Cipher.getInstance("AES/CBC/PKCS5Padding");
+                        dec.init(Cipher.DECRYPT_MODE,
+                                new SecretKeySpec(rawKey.getBytes("UTF-8"), "AES"),
+                                new IvParameterSpec(rawIv.getBytes("UTF-8")));
+                        text = new String(dec.doFinal(respBytes), "UTF-8");
+                    } catch (Exception decryptErr) {
+                        text = new String(respBytes, "UTF-8");
+                    }
+                } catch (Exception e) {
+                    status = -1;
+                    text = "{\"__error\":\"" + e.getClass().getSimpleName() + "\"}";
+                }
+                deliver(id, status, text);
+            }
+        });
+    }
+
+    /** 登录 Cookie 可能只落在 www.lofter.com，这里把多域名的 Cookie 合并后一起发给接口 */    private String mergedCookie(String url) {
         LinkedHashMap<String, String> map = new LinkedHashMap<>();
         addCookies(map, CookieManager.getInstance().getCookie(url));
         addCookies(map, CookieManager.getInstance().getCookie("https://www.lofter.com"));
