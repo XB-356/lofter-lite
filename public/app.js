@@ -146,6 +146,8 @@
       theme: 'auto', tags: [], reduceMotion: false,
       feedMode: 'recommend', onlyTag: '', blockedTags: [], blockedBlogs: [], mutedBlogs: [],
       profile: null, subscribedTags: [], accountSyncAt: 0, tagSeen: {}, followRecommend: true,
+      // 粮票 / 付费解锁的作品读不到正文，默认不进流
+      hideLocked: true,
     }, loadLS('settings', {})),
     saved: loadLS('saved', []),
     history: loadLS('history', []),
@@ -568,6 +570,8 @@
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }
   function isBlockedPost(p) {
+    // 粮票 / 付费解锁的作品：读不到正文，默认也不进流（设置里可以关掉这个过滤）
+    if (store.settings.hideLocked !== false && p.locked) return true;
     const b = store.settings.blockedTags || [];
     if (b.length && (p.tags || []).some((t) => b.indexOf(t) >= 0)) return true;
     const a = p.author || {};
@@ -2845,6 +2849,7 @@
         <a class="list-row" href="#/muted">${icon('user')}屏蔽用户<span class="val">${mutedBlogList().length} 位 ${icon('chevron')}</span></a>
         <a class="list-row" href="#/blacklist">${icon('shield')}拉黑名单<span class="val">${blockedBlogList().length} 位 ${icon('chevron')}</span></a>
         <a class="list-row" href="#/block-io">${icon('export')}导入 / 导出屏蔽<span class="val">${icon('chevron')}</span></a>
+        <button class="list-row" id="toggle-locked">${icon('eye')}隐藏粮票 / 付费作品<span class="val" id="locked-val">${store.settings.hideLocked !== false ? '开' : '关'}</span></button>
         <button class="list-row" id="theme-row">${icon('palette')}外观<span class="val" id="theme-val">${themeLabel()}</span></button>
         <button class="list-row" id="clear-cache">${icon('trash')}<span class="danger">清除本地记录</span><span class="val"></span></button>
       </div>
@@ -2858,6 +2863,14 @@
     $('#retry-profile')?.addEventListener('click', async () => {
       store.settings.accountSyncAt = 0;
       await syncAccount();
+      render();
+    });
+    $('#toggle-locked')?.addEventListener('click', () => {
+      const on = !(store.settings.hideLocked !== false);
+      store.settings.hideLocked = on;
+      store.saveSettings();
+      $('#locked-val').textContent = on ? '开' : '关';
+      toast(on ? '已隐藏粮票 / 付费作品' : '已显示粮票 / 付费作品');
       render();
     });
     $('#switch-acc')?.addEventListener('click', () => {

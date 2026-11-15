@@ -63,7 +63,8 @@ test('/api/tag 返回分页信息', async () => {
   const { status, body } = await get(srv.base, '/api/tag?name=' + encodeURIComponent('摄影') + '&sort=week');
   assert.equal(status, 200);
   assert.equal(body.tag, '摄影');
-  assert.equal(body.posts.length, 9);
+  // 12 条原始数据：1 个 null + 1 篇 AI 被剔掉，付费作品保留（前端按设置过滤）
+  assert.equal(body.posts.length, 10);
   assert.equal(body.nextOffset, 12);
   assert.equal(body.hasMore, true);
 });
