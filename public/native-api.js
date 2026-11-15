@@ -254,6 +254,8 @@
       // followed 用来让详情页的「关注」按钮一进来就显示「已关注」
       liked: !!(entry.liked || post.liked),
       followed: !!(entry.followed || post.followed),
+      // 作品所属合集（0 = 不在任何合集里），详情页据此显示「合集」入口
+      collectionId: Number(post.collectionId) || 0,
     });
   }
 
@@ -894,6 +896,96 @@
     };
   }
 
+  // ---------------- 合集（专栏）----------------
+  // 和「收藏夹」不是一回事：合集是作者自己给作品分组的专栏。
+  // 列表：POST /v1.1/postCollection.api method=getCollectionList&blogdomain=…
+  // 详情：POST /v1.1/postCollection.api method=getCollectionDetail&blogid=&collectionid=&offset=&order=1
+  const COLLECTION_URL = 'https://api.lofter.com/v1.1/postCollection.api?product=' + PRODUCT;
+  const COLLECTION_HEADERS = { 'User-Agent': APP_UA, Accept: '*/*' };
+
+  function normCollection(c) {
+    if (!c) return null;
+    return {
+      id: Number(c.id) || 0,
+      blogId: Number(c.blogId) || 0,
+      name: c.name || '未命名合集',
+      desc: c.description || '',
+      cover: c.coverUrl || '',
+      postCount: Number(c.postCount) || 0,
+      tags: c.tags ? String(c.tags).split(',').filter(Boolean) : [],
+      time: Number(c.lastPublishTime) || Number(c.createTime) || 0,
+    };
+  }
+
+  async function blogCollections(blogName, offset) {
+    const name = String(blogName || '').replace(/\s/g, '');
+    if (!name) throw new Error('缺少博主');
+    const off = Number(offset) || 0;
+    const form = {
+      blogdomain: name + '.lofter.com',
+      method: 'getCollectionList',
+      offset: String(off),
+      limit: '20',
+    };
+    const text = await req(COLLECTION_URL, {
+      method: 'POST',
+      body: new URLSearchParams(form).toString(),
+      headers: COLLECTION_HEADERS,
+    });
+    let j;
+    try { j = JSON.parse(text); } catch (e) { throw new Error('合集返回了异常内容'); }
+    const status = (j.meta && j.meta.status) || j.code;
+    if (status && status !== 200 && status !== 0) throw new Error((j.meta && j.meta.msg) || '合集读取失败');
+    const resp = j.response || {};
+    const list = (resp.collections || []).map(normCollection).filter((c) => c && c.id);
+    return {
+      collections: list,
+      next: list.length >= 20 ? off + list.length : -1,
+      hasMore: list.length >= 20,
+    };
+  }
+
+  async function collectionDetail(blogName, blogId, collectionId, offset) {
+    const cid = Number(collectionId) || 0;
+    if (!cid) throw new Error('合集参数不对');
+    const off = Number(offset) || 0;
+    const form = {
+      blogdomain: String(blogName || '').replace(/\s/g, '') + '.lofter.com',
+      method: 'getCollectionDetail',
+      blogid: String(blogId || 0),
+      collectionid: String(cid),
+      offset: String(off),
+      order: '1',
+    };
+    const text = await req(COLLECTION_URL, {
+      method: 'POST',
+      body: new URLSearchParams(form).toString(),
+      headers: COLLECTION_HEADERS,
+    });
+    let j;
+    try { j = JSON.parse(text); } catch (e) { throw new Error('合集返回了异常内容'); }
+    const status = (j.meta && j.meta.status) || j.code;
+    if (status && status !== 200 && status !== 0) throw new Error((j.meta && j.meta.msg) || '合集读取失败');
+    const resp = j.response || {};
+    const collection = normCollection(resp.collection);
+    const items = resp.items || resp.posts || [];
+    const posts = [];
+    for (const it of items) {
+      if (!it) continue;
+      const pv = it.post || it.postView || it;
+      const n = normPost(pv);
+      if (n && n.id) posts.push(n);
+    }
+    const clean = posts.filter((p) => !p.ai && !p.locked);
+    const nextOffset = typeof resp.offset === 'number' ? resp.offset : (items.length ? off + items.length : -1);
+    return {
+      collection: collection || { id: cid, blogId: Number(blogId) || 0, name: '合集', postCount: 0 },
+      posts: clean,
+      nextOffset,
+      hasMore: nextOffset >= 0 && items.length > 0,
+    };
+  }
+
   async function replies(blogId, postId, commentId, offset) {
     const base = 'https://www.lofter.com/comment/l2/page.json?postId=' + postId
       + '&blogId=' + blogId + '&offset=' + (offset || 0) + '&product=' + PRODUCT;
@@ -1193,7 +1285,11 @@
     '/api/shares': (p) => sharedPosts(Number(p.offset) || 0),
     '/api/collections': () => collectionFolders(),
     '/api/collection-posts': (p) => collectionPosts(p.folderId, Number(p.offset) || 0),
+    '/api/blog-collections': (p) => blogCollections(p.name, Number(p.offset) || 0),
+    '/api/collection': (p) => collectionDetail(p.name, p.blogId, p.collectionId, Number(p.offset) || 0),
     '/api/like': (p) => likePost(p.blogId, p.postId, p.like === '1'),
+    '/api/captcha': () => captchaChallenge(),
+    '/api/captcha-check': (p) => captchaVerify(p.challengeId, Number(p.x) || 0),
     '/api/share': (p) => sharePost(p.title, p.url),
     '/api/follow-blog': (p) => followBlog(p.blogId, p.domain, p.follow === '1'),
     '/api/comment-add': (p) => addComment(p.blogId, p.postId, p.content, p.parentId),

@@ -1250,6 +1250,18 @@
               <div class="sub">${esc(b.intro || b.name)}</div></div>
             </div>`;
           viewEl.insertBefore(head, viewEl.firstChild);
+          // 博主有合集时给个入口（合集是作者自己的专栏，和收藏夹无关）
+          if (NATIVE) {
+            api('/api/blog-collections', { name: b.name }).then((d) => {
+              const list = (d && d.collections) || [];
+              if (!list.length || token !== navId) return;
+              const row = document.createElement('a');
+              row.className = 'list-row blog-coll-row';
+              row.href = '#/blog-collections/' + encodeURIComponent(b.name);
+              row.innerHTML = `<span class="bc-ico">${icon('bookmark')}</span><span class="bc-main">合集</span><span class="val">${list.length} 个 ${icon('chevron')}</span>`;
+              head.appendChild(row);
+            }).catch(() => {});
+          }
         }
         $('#masonry').querySelectorAll('.skeleton').forEach((s) => s.remove());
         if (!data.posts.length) { done = true; if (!offset) $('#loadmore').textContent = '这位博主还没有公开作品'; }
@@ -1532,12 +1544,123 @@
     load();
   }
 
+  // ================= 页面：合集（作者给自己作品分的专栏，和收藏夹无关）=================
+  async function viewBlogCollections(name) {
+    setTab(null);
+    setHeader(`
+      <button class="icon-btn" id="btn-back" aria-label="返回">${icon('back')}</button>
+      <div class="h-title">合集</div>
+      <div class="spacer"></div>
+    `);
+    $('#btn-back').addEventListener('click', back);
+    if (!NATIVE) {
+      viewEl.innerHTML = `<div style="padding:16px">${emptyEl('合集需要在 App 内查看', false)}</div>`;
+      return;
+    }
+    viewEl.innerHTML = `<div style="padding:14px 0 30px"><div class="load-more"><span class="spinner"></span>读取合集</div></div>`;
+    const token = navId;
+    let data;
+    try {
+      data = await api('/api/blog-collections', { name });
+    } catch (err) {
+      if (token !== navId) return;
+      viewEl.innerHTML = `<div style="padding:16px">${emptyEl(err.message || '合集读取失败', true)}</div>`;
+      viewEl.querySelector('.retry')?.addEventListener('click', () => render());
+      return;
+    }
+    if (token !== navId) return;
+    const list = data.collections || [];
+    if (!list.length) {
+      viewEl.innerHTML = `<div style="padding:16px">${emptyEl('这位博主还没有合集', false)}</div>`;
+      return;
+    }
+    viewEl.innerHTML = `
+      <div class="list-card" style="margin-top:14px">
+        ${list.map((c) => `
+          <a class="list-row fav-folder" href="#/collection/${encodeURIComponent(name)}/${c.blogId || 0}/${c.id}">
+            ${c.cover
+              ? `<img class="fav-folder-cover" src="${esc(thumb(c.cover, 200))}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">`
+              : `<span class="fav-folder-cover fav-folder-ph">${icon('bookmark')}</span>`}
+            <div class="fav-folder-main">
+              <div class="fav-folder-name">${esc(c.name)}</div>
+              <div class="fav-folder-sub">${num(c.postCount)} 篇${c.desc ? ' · ' + esc(c.desc) : (c.tags && c.tags.length ? ' · ' + esc(c.tags.slice(0, 3).join(' / ')) : '')}</div>
+            </div>
+            <span class="val">${icon('chevron')}</span>
+          </a>`).join('')}
+      </div>
+      <div class="load-more" style="padding-top:14px">共 ${num(list.length)} 个合集</div>`;
+  }
+
+  async function viewCollectionPosts(name, blogId, collectionId) {
+    setTab(null);
+    setHeader(`
+      <button class="icon-btn" id="btn-back" aria-label="返回">${icon('back')}</button>
+      <div class="h-title">合集</div>
+      <div class="spacer"></div>
+    `);
+    $('#btn-back').addEventListener('click', back);
+    if (!NATIVE) {
+      viewEl.innerHTML = `<div style="padding:16px">${emptyEl('合集需要在 App 内查看', false)}</div>`;
+      return;
+    }
+    viewEl.innerHTML = `<div class="feed"><div class="masonry" id="masonry"></div><div class="load-more" id="loadmore"></div><div id="sentinel" style="height:1px"></div></div>`;
+    const m = new Masonry($('#masonry'), colsFor());
+    appendSkeletons(m, 6);
+    const token = navId;
+    let offset = 0, done = false, loading = false, coll = null;
+
+    async function load() {
+      if (loading || done || token !== navId) return;
+      loading = true;
+      try {
+        const d = await api('/api/collection', { name, blogId, collectionId, offset });
+        if (token !== navId) return;
+        $('#masonry').querySelectorAll('.skeleton').forEach((n) => n.remove());
+        if (d.collection && !coll && d.collection.name) {
+          coll = d.collection;
+          const title = $('.h-title');
+          if (title) title.textContent = coll.name;
+        }
+        const posts = (d.posts || []).filter((p) => !isBlockedPost(p));
+        if (!posts.length) {
+          done = true;
+          if (!offset) $('#masonry').innerHTML = `<div class="empty"><div class="big">📚</div><p>这个合集还没有作品</p></div>`;
+        } else {
+          for (const p of posts) m.add(cardEl(p));
+          bindImages(viewEl);
+          currentFeedExtra.push(...posts);
+        }
+        if (d.hasMore && d.nextOffset >= 0 && d.nextOffset !== offset) offset = d.nextOffset;
+        else done = true;
+        const more = $('#loadmore');
+        if (more) more.textContent = done ? (coll && coll.postCount ? '共 ' + num(coll.postCount) + ' 篇' : '') : '已显示 ' + num(offset) + ' 篇 · 继续下拉加载更多';
+      } catch (err) {
+        if (token !== navId) return;
+        $('#masonry').querySelectorAll('.skeleton').forEach((n) => n.remove());
+        if (!offset) {
+          viewEl.innerHTML = `<div style="padding:16px">${emptyEl(err.message || '合集加载失败', true)}</div>`;
+          viewEl.querySelector('.retry')?.addEventListener('click', () => render());
+        } else {
+          toast(err.message || '加载失败');
+        }
+        done = true;
+      } finally {
+        loading = false;
+      }
+    }
+
+    const io = new IntersectionObserver((en) => { if (en.some((x) => x.isIntersecting)) load(); }, { rootMargin: '700px 0px' });
+    io.observe($('#sentinel'));
+    load();
+  }
+
   // ================= 页面：帖子详情 =================
   async function viewPost(blogId, postId) {
     setTab(null);
     setHeader(`
       <button class="icon-btn" id="btn-back" aria-label="返回">${icon('back')}</button>
       <div class="spacer"></div>
+      <button class="btn mini" id="btn-follow-top" hidden>${icon('user')}<span>关注</span></button>
       <button class="icon-btn" id="btn-save" aria-label="收藏">${icon('bookmark')}</button>
       <button class="icon-btn" id="btn-open" aria-label="在 LOFTER 打开">${icon('external')}</button>
     `);
@@ -1602,6 +1725,7 @@
           ${photoHtml ? `<div class="photo-list">${photoHtml}</div>` : ''}
           ${post.content ? `<div class="post-content">${post.content}</div>` : ''}
           ${post.tags?.length ? `<div class="post-tags">${post.tags.map((t) => `<a class="mini-tag" data-tag-block="${esc(t)}" href="#/tag/${encodeURIComponent(t)}">#${esc(t)}</a>`).join('')}</div>` : ''}
+          <div id="post-collection"></div>
           <div class="post-stats">
             <div>${icon('heart')}${num(post.stats.like)} 喜欢</div>
             <div>${icon('share')}${num(post.stats.reblog)} 推荐</div>
@@ -1629,6 +1753,32 @@
       </div>`;
 
     $('#orig-open').onclick = () => openExternal(post.url);
+
+    // 作品属于某个合集时，显示合集入口（合集名要再拉一次详情才拿得到）
+    if (post.collectionId) {
+      const holder = $('#post-collection');
+      const link = `#/collection/${encodeURIComponent(post.author.name)}/${post.author.id}/${post.collectionId}`;
+      holder.innerHTML = `<a class="post-collection" href="${link}">
+        <span class="pc-ico">${icon('bookmark')}</span>
+        <span class="pc-main"><b>所属合集</b><i>读取中…</i></span>
+        <span class="pc-arr">${icon('chevron')}</span>
+      </a>`;
+      api('/api/collection', { name: post.author.name, blogId: post.author.id, collectionId: post.collectionId, offset: 0 })
+        .then((d) => {
+          const c = (d && d.collection) || {};
+          const el = holder.querySelector('.post-collection');
+          if (!el) return;
+          const b = el.querySelector('.pc-main b');
+          const i = el.querySelector('.pc-main i');
+          if (b) b.textContent = c.name || '所属合集';
+          const total = Number(c.postCount) || (d.posts || []).length;
+          if (i) i.textContent = total ? '共 ' + num(total) + ' 篇' : '';
+        })
+        .catch(() => {
+          const el = holder.querySelector('.post-collection');
+          if (el) el.remove();
+        });
+    }
 
     // 正文内图片收集
     $$('.post-content img, .post-caption img').forEach((img) => {
@@ -3096,6 +3246,11 @@
       if (path === '/favorites') return await viewAccountPosts('likes');
       if (path === '/shares') return await viewAccountPosts('shares');
       if (path === '/collections') return await viewCollections();
+      // 作者的合集：列表 / 某个合集里的作品（#/collection/<博主名>/<blogId>/<合集 id>）
+      if (parts[0] === 'blog-collections' && parts[1]) return await viewBlogCollections(parts[1]);
+      if (parts[0] === 'collection' && parts.length >= 4) {
+        return await viewCollectionPosts(parts[1], Number(parts[2]) || 0, Number(parts[3]) || 0);
+      }
       if (parts[0] === 'collection' && parts[1]) return await viewCollection(Number(parts[1]) || 0);
       if (path === '/about') return viewAbout();
       if (path === '/diag') return viewDiag();
