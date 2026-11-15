@@ -2735,7 +2735,6 @@
 
     viewEl.innerHTML = `
       ${head}
-      ${pinnedHtml}
       ${logged && !profile && profileError ? `<div class="profile-error">
         <span>账号资料读取失败：${esc(profileError)}</span>
         <button id="retry-profile">重试</button>
