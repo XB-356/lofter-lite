@@ -669,27 +669,36 @@
     }
     return false;
   }
-  // 返回「这篇为什么被屏蔽」的原因；空数组 = 没被屏蔽。
-  // 详情页用它给用户一句解释（链接可能是别人发来的，用户不知道本机屏蔽过什么）。
-  function blockReasons(p) {
+  // 返回「这篇为什么被屏蔽」的原因：text 用来说明，short 用在「该作品已被【short】屏蔽」这句话里
+  function blockCauses(p) {
     const out = [];
-    if (store.settings.hideLocked !== false && p.locked) out.push('这是需要粮票 / 付费解锁的作品');
+    if (store.settings.hideLocked !== false && p.locked) {
+      out.push({ text: '这是需要粮票 / 付费解锁的作品', short: '粮票 / 付费作品' });
+    }
     const bt = (store.settings.blockedTags || []).filter((t) => (p.tags || []).indexOf(t) >= 0);
-    if (bt.length) out.push('已屏蔽标签 ' + bt.map((t) => '#' + t).join('、'));
+    if (bt.length) out.push({ text: '已屏蔽标签 ' + bt.map((t) => '#' + t).join('、'), short: '标签 ' + bt.map((t) => '#' + t).join('、') });
     const kws = (store.settings.blockedKeywords || []).filter(Boolean);
     if (kws.length) {
       const hay = ((p.title || '') + ' ' + (p.digest || '') + ' ' + (p.tags || []).join(' ')).toLowerCase();
       const hit = kws.filter((k) => hay.indexOf(String(k).toLowerCase()) >= 0);
-      if (hit.length) out.push('命中屏蔽关键词「' + hit.join('」「') + '」');
+      if (hit.length) out.push({ text: '命中屏蔽关键词「' + hit.join('」「') + '」', short: '关键词「' + hit.join('」「') + '」' });
     }
     const a = p.author || {};
     const mb = mutedBlogList();
     if (mb.some((x) => (a.id && x.id && String(x.id) === String(a.id))
       || (a.name && x.name === a.name)
-      || (a.nick && (x.nick === a.nick || x.name === a.nick)))) out.push('已屏蔽用户 @' + (a.nick || a.name || ''));
+      || (a.nick && (x.nick === a.nick || x.name === a.nick)))) {
+      out.push({ text: '已屏蔽用户 @' + (a.nick || a.name || ''), short: '你屏蔽的用户 @' + (a.nick || a.name || '') });
+    }
     const bb = blockedBlogList();
-    if (bb.some((x) => x.name === a.name || x.name === a.nick || x.nick === a.nick)) out.push('已拉黑用户 @' + (a.nick || a.name || ''));
+    if (bb.some((x) => x.name === a.name || x.name === a.nick || x.nick === a.nick)) {
+      out.push({ text: '已拉黑用户 @' + (a.nick || a.name || ''), short: '你拉黑的用户 @' + (a.nick || a.name || '') });
+    }
     return out;
+  }
+
+  function blockReasons(p) {
+    return blockCauses(p).map((c) => c.text);
   }
 
   function findPost(id) {
@@ -1853,15 +1862,26 @@
 
     // 链接可能是别人发来的（剪贴板、分享），本机屏蔽过它时给一句解释 + 「继续观看」，
     // 而不是莫名其妙地什么都不显示。继续观看只在本会话对这篇生效。
-    const gateReasons = blockReasons(post);
+    const gateCauses = blockCauses(post);
+    const gateReasons = gateCauses.map((c) => c.text);
     const gateKey = 'blockGate:' + post.id;
     if (gateReasons.length && sessionStorage.getItem(gateKey) !== '1') {
+      // 先把「为什么被屏蔽」说清楚，再让用户决定看不看：
+      // 标题 / 作者 / 标签照常显示（这些本来就在列表里能看到），正文和图片先不渲染。
+      const shortReasons = gateCauses.map((c) => c.short).join('、');
       viewEl.innerHTML = `
         <div class="blk-gate">
-          <div class="blk-gate-ico">${icon('shield')}</div>
-          <h2>这篇作品被屏蔽了</h2>
-          <div class="blk-gate-reasons">${gateReasons.map((r) => `<p>${esc(r)}</p>`).join('')}</div>
-          <p class="blk-gate-tip">屏蔽只作用在这台设备上，可以在「我的 → 屏蔽」里取消。</p>
+          <div class="blk-gate-head">
+            <img class="blk-gate-ava" src="${esc(thumb(post.author.avatar, 120))}" alt=""
+              onerror="this.style.visibility='hidden'">
+            <div class="blk-gate-who">
+              <b>${esc(post.author.nick || post.author.name || '')}</b>
+              <span>@${esc(post.author.name || '')}</span>
+            </div>
+          </div>
+          ${post.title ? `<h1 class="blk-gate-title">${esc(post.title)}</h1>` : ''}
+          ${post.tags && post.tags.length ? `<div class="blk-gate-tags">${post.tags.slice(0, 6).map((t) => `<span>#${esc(t)}</span>`).join('')}</div>` : ''}
+          <p class="blk-gate-ask">该作品已被<b>${esc(shortReasons)}</b>屏蔽，是否继续观看？</p>
           <div class="blk-gate-actions">
             <button class="btn" id="blk-gate-view">继续观看</button>
             <button class="btn ghost" id="blk-gate-back">返回</button>

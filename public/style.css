@@ -1490,19 +1490,40 @@ input[type="search"]::-webkit-search-decoration { -webkit-appearance: none; appe
 .list-row.blk-acct { margin: 10px 12px 0; border-radius: 12px; width: calc(100% - 24px); }
 .list-row.blk-acct .val { flex: none; }
 
-/* 详情页：链接打开的是本机屏蔽过的作品时的说明卡 */
+/* 详情页：链接打开的是本机屏蔽过的作品时的说明卡（先亮作者 / 标题 / 标签，再问要不要看） */
 .blk-gate {
-  margin: 18px 16px 0; padding: 22px 18px 18px;
-  background: var(--card); border-radius: 16px; text-align: center;
+  margin: 16px 14px 0; padding: 16px 16px 14px;
+  background: var(--card); border-radius: 16px;
 }
-.blk-gate-ico {
-  width: 46px; height: 46px; margin: 0 auto 10px;
-  border-radius: 50%; display: grid; place-items: center;
-  background: var(--accent-weak); color: var(--accent);
+.blk-gate-head { display: flex; align-items: center; gap: 10px; }
+.blk-gate-ava { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: var(--bg-soft); flex: none; }
+.blk-gate-who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.blk-gate-who b { font-size: 14.5px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.blk-gate-who span { font-size: 11.5px; color: var(--sub); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.blk-gate-title { margin: 14px 0 0; font-size: 17px; font-weight: 700; line-height: 1.4; }
+.blk-gate-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.blk-gate-tags span {
+  font-size: 12px; color: var(--accent); background: var(--accent-weak);
+  padding: 3px 9px; border-radius: 99px;
 }
-.blk-gate-ico svg { width: 22px; height: 22px; }
-.blk-gate h2 { font-size: 16.5px; font-weight: 700; margin: 0 0 10px; }
-.blk-gate-reasons p { margin: 4px 0; font-size: 13.5px; color: var(--text-2); }
-.blk-gate-tip { margin: 12px 0 0; font-size: 12px; color: var(--sub); line-height: 1.7; }
-.blk-gate-actions { display: flex; gap: 10px; margin-top: 16px; }
+.blk-gate-ask {
+  margin: 14px 0 0; padding-top: 12px; border-top: 1px solid var(--line);
+  font-size: 13.5px; color: var(--text-2); line-height: 1.65;
+}
+.blk-gate-ask b { color: var(--text); font-weight: 650; }
+.blk-gate-actions { display: flex; gap: 10px; margin-top: 14px; }
 .blk-gate-actions .btn { flex: 1; }
+
+/* 详情页合集：上一篇 / 下一篇 */
+.pc-nav { display: flex; gap: 10px; margin-top: 8px; }
+.pc-btn {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 4px;
+  height: 40px; border-radius: 11px; background: var(--bg-soft);
+  color: var(--text-2); font-size: 13px; text-decoration: none;
+}
+.pc-btn:active { background: var(--line); }
+.pc-btn svg { width: 15px; height: 15px; }
+.pc-btn.is-off { opacity: .38; }
+
+/* 长按卡片只弹「不想看这条？」面板：别让 WebView 顺手选中/复制卡片文字 */
+.card, .big-card { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
