@@ -993,8 +993,17 @@
     appendSkeletons(m, 6);
 
     let offset = 0, loading = false, done = false;
-    let shown = 0, emptyPages = 0;
+    let shown = 0, emptyPages = 0, pumped = 0;
     const token = navId;
+
+    // 作品被「标签屏蔽 / 屏蔽用户」过滤掉以后只剩几张卡时，页面比屏幕还短，
+    // sentinel 一直停在视口里，IntersectionObserver 不会再次触发 —— 会卡住不再加载。
+    // 所以每轮加载完再看一眼：还在视野里就自己接着拉下一页。
+    function sentinelInView() {
+      const el = $('#sentinel');
+      if (!el) return false;
+      return el.getBoundingClientRect().top < window.innerHeight + 700;
+    }
 
     async function load() {
       if (loading || done) return;
@@ -1020,8 +1029,9 @@
         // 作品全被「标签屏蔽 / 屏蔽用户」过滤掉时页面会剩下空白：先把后面几页翻完，
         // 翻完还是空的就给一句说明，别让用户对着空页面以为卡住了
         if (!shown) {
-          // 只多翻 3 页：上游可能一直回 hasMore=true，不能无限刷
-          if (!done && emptyPages < 3) { emptyPages++; loading = false; return load(); }
+          // 只多翻 3 页：上游可能一直回 hasMore=true，不能无限刷；
+          // 后续几页由 finally 里的「还在视野里就接着拉」负责，别在这里递归
+          if (!done && emptyPages < 3) { emptyPages++; return; }
           done = true;
           const blocked = (store.settings.blockedTags || []).indexOf(name) >= 0;
           viewEl.querySelector('.masonry').innerHTML = blocked
@@ -1037,6 +1047,7 @@
         else toast('加载失败：' + err.message);
       } finally {
         loading = false;
+        if (!done && token === navId && pumped++ < 40 && sentinelInView()) setTimeout(load, 60);
       }
     }
 
