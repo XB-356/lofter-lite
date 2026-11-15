@@ -1272,6 +1272,7 @@
             <div class="n" id="tag-sub">正在读取…</div>
             <div class="sub">按发布时间浏览公开内容</div>
           </div>
+          <button class="chip sub-chip" id="btn-sub-tag" hidden>订阅</button>
         </div>
         <div class="seg" id="seg">
           <button data-sort="new" class="${sort === 'new' ? 'on' : ''}">最新</button>
@@ -1283,6 +1284,36 @@
         <div class="load-more" id="loadmore"></div>
         <div id="sentinel" style="height:1px"></div>
       </div>`;
+
+    // 标签订阅：写账号数据，官方 App / 网页端也能看到同一个订阅
+    if (NATIVE) {
+      const subBtn = $('#btn-sub-tag');
+      let subscribed = false;
+      const paintSub = () => {
+        if (!subBtn) return;
+        subBtn.textContent = subscribed ? '已订阅' : '订阅';
+        subBtn.classList.toggle('on', subscribed);
+      };
+      api('/api/tag-config', { tag: name }).then((cfg) => {
+        subscribed = !!(cfg && cfg.favorited);
+        if (subBtn) { subBtn.hidden = false; paintSub(); }
+      }).catch(() => {});
+      subBtn?.addEventListener('click', async () => {
+        const next = !subscribed;
+        subBtn.disabled = true;
+        try {
+          await withCaptcha(() => api('/api/subscribe-tag', { tag: name, on: next ? '1' : '0' }));
+          subscribed = next;
+          paintSub();
+          toast(next ? `已订阅 #${name}，同步到了你的账号` : `已取消订阅 #${name}`);
+        } catch (e) {
+          toast((e && e.message) || '订阅失败');
+        } finally {
+          subBtn.disabled = false;
+        }
+      });
+    }
+
 
     api('/api/taginfo', { name }).then((info) => {
       if (info.cover) {
@@ -2909,6 +2940,34 @@
 
     const cards = [...body.querySelectorAll('.tag-big')];
     const token = navId;
+
+    // 长按标签卡：取消订阅（写账号，官方 App 里也会一起取消）
+    if (NATIVE) {
+      let pressTimer = null;
+      const cancel = () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } };
+      body.addEventListener('touchstart', (e) => {
+        const card = e.target.closest('.tag-big');
+        if (!card) return;
+        cancel();
+        pressTimer = setTimeout(async () => {
+          pressTimer = null;
+          const t = card.dataset.tag;
+          if (!confirm(`取消订阅 #${t}？\n会同时从你的 LOFTER 账号里取消订阅。`)) return;
+          try {
+            await withCaptcha(() => api('/api/subscribe-tag', { tag: t, on: '0' }));
+            store.settings.subscribedTags = (store.settings.subscribedTags || []).filter((x) => x !== t);
+            store.saveSettings();
+            card.remove();
+            toast(`已取消订阅 #${t}`);
+          } catch (err) {
+            toast((err && err.message) || '取消订阅失败');
+          }
+        }, 520);
+      }, { passive: true });
+      body.addEventListener('touchmove', cancel, { passive: true });
+      body.addEventListener('touchend', cancel, { passive: true });
+      body.addEventListener('contextmenu', (e) => { if (e.target.closest('.tag-big')) e.preventDefault(); });
+    }
 
     // 先用缓存同步铺一遍，避免首屏全是占位
     cards.forEach((el) => {

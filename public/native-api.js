@@ -1347,6 +1347,47 @@
       { optype: on ? 'add' : 'del', targetblogid: String(blogId) }, '同步拉黑');
   }
 
+  // 标签订阅：写的是账号数据（会同步到官方 App / 网页端）
+  async function subscribeTagAccount(tag, on) {
+    const r = await writeAccount('https://api.lofter.com/v1.1/subscribetag.api?product=' + PRODUCT,
+      { optype: on ? 'add' : 'del', tag: String(tag), id: '0' }, on ? '订阅标签' : '取消订阅标签');
+    cache.delete('subscribed'); // 订阅列表变了，下次重新拉
+    return r;
+  }
+
+  async function tagConfig(tag) {
+    const text = await req('https://api.lofter.com/v1.1/newTag.api?product=' + PRODUCT, {
+      method: 'POST',
+      body: new URLSearchParams({ tag: String(tag), method: 'newTagConfig' }).toString(),
+      headers: Object.assign({}, WRITE_HEADERS, { 'Content-Type': 'application/x-www-form-urlencoded' }),
+    });
+    let j = {};
+    try { j = JSON.parse(text); } catch (e) { j = {}; }
+    const r = (j && j.response) || {};
+    return { favorited: r.favorited === true, image: (r.tagConfig && r.tagConfig.image) || '' };
+  }
+
+  async function favoriteTags() {
+    const out = [];
+    let offset = 0;
+    for (let i = 0; i < 8; i++) {
+      const text = await req('https://api.lofter.com/newtag/getFavoriteTags.json?offset=' + offset + '&limit=10&withPost=1', {
+        headers: { 'User-Agent': APP_UA, Accept: 'application/json' },
+      });
+      let j = {};
+      try { j = JSON.parse(text); } catch (e) { break; }
+      const d = (j && j.data) || {};
+      const list = d.favoriteTags || [];
+      list.forEach((t) => {
+        if (t && t.name) out.push({ name: t.name, image: t.image || '', unread: Number(t.unreadCount) || 0 });
+      });
+      const next = Number(d.offset);
+      if (!list.length || !Number.isFinite(next) || next <= offset) break;
+      offset = next;
+    }
+    return { list: out };
+  }
+
   async function followBlog(blogId, domain, follow) {
     if (!(await probeLogin())) throw new Error('请先登录 LOFTER');
     const url = 'https://api.lofter.com/v1.1/follow.api?product=' + PRODUCT
@@ -1481,6 +1522,9 @@
     '/api/account-block-blog': (p) => blockBlogAccount(p.blogId, p.on === '1'),
     '/api/me': () => cached('me', 5 * 60e3, getProfile),
     '/api/subscribed': () => cached('subscribed', 10 * 60e3, getSubscribedTags),
+    '/api/tag-config': (p) => tagConfig(p.tag),
+    '/api/subscribe-tag': (p) => subscribeTagAccount(p.tag, p.on === '1'),
+    '/api/favorite-tags': () => favoriteTags(),
     '/api/diag': () => diag(),
     '/api/blog': (p) => blogHome(p.name, Number(p.offset) || 0),
     '/api/catalog': () => CATALOG,
