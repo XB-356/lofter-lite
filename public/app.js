@@ -1534,14 +1534,22 @@
       if (s) s.textContent = '已喜欢';
     }
     likeBtn?.addEventListener('click', async () => {
+      // 点赞要打在「原博主」身上：转发帖的 author 是转发者，用 originBlogId 才对
+      const targetBlogId = post.originBlogId || post.author.id;
+      const want = !liked;
+      likeBtn.disabled = true;
       try {
-        await api('/api/like', { blogId: post.author.id, postId: post.id, like: liked ? '0' : '1' });
-        liked = !liked;
+        await api('/api/like', { blogId: targetBlogId, postId: post.id, like: want ? '1' : '0' });
+        liked = want;
         likeBtn.classList.toggle('on', liked);
         likeBtn.querySelector('span').textContent = liked ? '已喜欢' : '喜欢';
         post.stats.like += liked ? 1 : -1;
         toast(liked ? '已喜欢' : '已取消');
-      } catch (e) { toast(e.message); }
+      } catch (e) {
+        toast(e.message);
+      } finally {
+        likeBtn.disabled = false;
+      }
     });
     $('#act-follow')?.addEventListener('click', async () => {
       try {

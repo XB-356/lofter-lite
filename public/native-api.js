@@ -924,6 +924,18 @@
     return out;
   }
 
+  // 回读详情里的 liked：上游有时对点赞回 200 却没真正写进账号，
+  // 只有详情里的 liked 才算数（否则会出现「本地亮了、退出重进又变回未喜欢」）
+  async function likedState(blogId, postId) {
+    const resp = await callApi(DETAIL_URL, {
+      targetblogid: String(blogId), blogId: String(blogId), postid: String(postId),
+      supportposttypes: POST_TYPES, offset: 0, requestType: 1, postdigestnew: 1, checkpwd: 1, needgetpoststat: 1,
+    });
+    const entry = (resp.posts || [])[0];
+    if (!entry) return null;
+    return !!(entry.liked || (entry.post && entry.post.liked));
+  }
+
   // 点赞：必须 POST 表单，参数是 liketype=like|unlike + postid + blogid + scene
   // （GET + like=1 的老写法上游只回 4101，2026-11 真机确认）
   async function likePost(blogId, postId, like) {
@@ -944,10 +956,20 @@
     try { j = JSON.parse(text); } catch (e) { throw new Error('点赞返回异常'); }
     const meta = (j && j.meta) || {};
     const ok = !!(j && (meta.status === 200 || j.code === 0));
-    // 已经喜欢过的作品再点 like，上游回 4102「参数异常」；当成已喜欢处理，别弹错误
-    if (!ok && like && meta.status === 4102) return { ok: true, already: true };
-    if (!ok) throw new Error(meta.msg || (j && j.msg) || '点赞失败');
-    return { ok };
+    // 4102 既可能是「已经喜欢过」，也可能是参数/权限不对——两种都不能直接当成功
+    if (!ok && meta.status !== 4102) throw new Error(meta.msg || (j && j.msg) || '点赞失败');
+
+    // 回读确认：只有详情里的 liked 改成目标值才算真的同步到了账号
+    let actual = null;
+    try { actual = await likedState(blogId, postId); } catch (e) { actual = null; }
+    if (actual === null) {
+      if (!ok) throw new Error('LOFTER 没有接受这次操作（可能被限制）');
+      return { ok: true, unverified: true };
+    }
+    if (actual === !!like) return { ok: true };
+    throw new Error(like
+      ? 'LOFTER 没有接受这次喜欢（可能被限制或参数不被接受）'
+      : 'LOFTER 没有接受取消喜欢');
   }
 
   // APK：弹系统分享面板（Bridge.share 里走 Intent.ACTION_SEND），不要把人丢进浏览器
