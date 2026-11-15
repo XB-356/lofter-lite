@@ -62,7 +62,7 @@ test/                node:test：server(HTTP) / lofter(归一化) / cache / live
 - `desktop/` 是 C#：只能写 **C# 5** 语法（系统自带 csc.exe 是 .NET Framework 4.x 的旧编译器），不要用字符串内插、`?.`、`nameof`、`=>` 表达式体成员等新语法。
 - `desktop/src/Launcher.cs`、`desktop/build.ps1` 这类含中文的 `.cs` / `.ps1` **必须存成 UTF-8 with BOM**：csc 与 Windows PowerShell 5.1 默认按 ANSI(GBK) 读源码，没 BOM 会乱码甚至语法错误。同理，**不要用 `Get-Content`/`Set-Content` 改含中文的文件**（PS 5.1 默认按 GBK 解码，会把 UTF-8 中文写坏），要用 `[IO.File]::ReadAllText($p,[Text.UTF8Encoding]::new($false))` + `WriteAllText`。
 - APK 的 WebView 调试只在 debug 包生效：`aapt --debug-mode` 写 `debuggable=true` + `MainActivity` 里按 `FLAG_DEBUGGABLE` 调 `setWebContentsDebuggingEnabled(true)`。release 包不要带这些。
-- 「不想看」有三种，别混在一起：`blockedTags`（标签屏蔽）、`mutedBlogs`（**屏蔽用户**：只在这台设备上隐藏，不通知对方、不写账号）、`blockedBlogs`（**拉黑**：账号级黑名单的本地镜像，来自 `/api/sync-blocks`）。过滤统一走 `isBlockedPost()`，不要在渲染处各写一套；两个列表在 UI 上也必须是两个入口（`#/muted` / `#/blacklist`）。
+- 「不想看」有四种，别混在一起：`blockedTags`（标签屏蔽）、`blockedKeywords`（关键词屏蔽：标题/摘要/标签命中即隐藏）、`mutedBlogs`（**屏蔽用户**：只在这台设备上隐藏，不通知对方、不写账号；可从账号同步「不想看 TA 的动态」）、`blockedBlogs`（**拉黑**：账号级黑名单的本地镜像，来自 `/api/sync-blocks`）。过滤统一走 `isBlockedPost()`，不要在渲染处各写一套；四个入口分别是 `#/blocked`、`#/keywords`、`#/muted`、`#/blacklist`。
 
 ## 不要做
 
@@ -124,8 +124,13 @@ test/                node:test：server(HTTP) / lofter(归一化) / cache / live
 - **评论排序没有上游参数**：`comment/l1/page.json` 的 `&order=` / `&sort=` 传什么都没用，响应里的 `data.hotList`（热门 10 条）与 `data.list`（按时间）是两批不同数据。评论区的「热门 / 最新」tab 就是分别用这两批，别再去试排序参数。
 - **官方功能评论要过滤**：一页里常常大半是 `[更新求踢]` 这种整条只有方括号标记的评论（官方 App 的功能按钮），用户看不到正文。两份归一化都用 `/^(\[[^\]\s]{1,12}\][\s　]*)+$/` 判定，命中且没有 `images` 就返回 `null`。
 - **图片评论的图在 `images[]`**，`content` 里只有 `[图片]` 占位；按顺序替换，多出来的补末尾。图片要用 `display:block` 单独占一行（用户明确要求：文字和图不要挤在一起）。
-- **划线评**：上游会在评论对象里带被划住的原文。已按 `quoteContent / quoteText / targetContent / highlightContent / originContent / markContent` 依次取第一个非空的（`quoteOf`），有就在评论上方显示引用块 + 「划线评」角标。实测手上没有一条真划线评，字段名还没被真数据确认过——拿到样例要回填。
+- **划线评**：上游会在评论对象里带被划住的原文（字段就是 `quote`，见下面那条），有就在评论上方显示引用块 + 「划线评」角标。
 - **草稿 / 定时发布不能显示**：`isPublished === false`、`queuePostType > 0`、或没有 `publishTime` 的都算草稿（`post.draft`），归一化列表时统一滤掉。
 - **付费 / 粮票作品不再由服务端丢弃**：列表照常返回，带 `locked` 标记；是否隐藏由前端 `store.settings.hideLocked`（默认 true）决定，过滤统一走 `isBlockedPost()`。
 - **剪贴板作品链接**：`https://<博客名>.lofter.com/post/<blogId 十六进制>_<postId 十六进制>`，两段十六进制就是数字 ID（例 `31fc1282_34e1e4981` → 838603394 / 14195509633）。`parseInt(hex)` 还原后走 `#/post/<blogId>/<postId>`；详情页 HTML 是 SPA 壳，抓不到 postId，别去解析 HTML。读剪贴板必须在前台（Android 10+），所以检查点放在启动后和 `visibilitychange` 回前台。
 - **改含中文的文件不要用 PowerShell 的 `Get-Content`/`Set-Content` 回写**（PS 5.1 按 GBK 解码，中文注释会变成 `杩欑瘒...` 这种乱码，`node --check` 直接报 `Invalid or unexpected token`）。一律用 read/edit 工具；真被写坏了就 `git checkout -- <file>` 重来。
+
+- **划线评的字段就是 `quote`**（真机样例 https://xinjinjumin4875273.lofter.com/post/75d1bdcd_34cbd05c5 确认）：评论对象上可能多一个 `quote` 字符串，就是被划住的原文。`quoteOf()` 里 `c.quote` 要排第一，其余 `quoteContent/quoteText/...` 只是兜底。没有 `quote` 的普通评论不要显示引用块。
+- **审核中的作品要过滤**：`post.auditing` / `post.newVersionAuditing` 为 true 时对外不可见（作者本人能看到），`normalizePost` 归一化成 `p.audit`，列表和主页统一 `!p.ai && !p.draft && !p.audit`。别拿 `valid` / `allowView` 判断——正常发布的帖子这两个字段也是 0。
+- **关键词屏蔽是本机功能**（`store.settings.blockedKeywords`）：在 `isBlockedPost()` 里把标题 + 摘要 + 标签拼成一个字符串，任一关键词（不区分大小写）命中就隐藏；不要塞进服务端过滤，否则导入导出和开关都不好做。
+- **账号级「不想看 TA 的动态」有两处接口**（都要登录）：推荐流屏蔽 `GET /v1.1/shieldrecommanage.api?product=…&optype=get&offset=0&limit=100`，关注流屏蔽 `POST /timeline/manage.json`（body `op=get`）。`shieldedBlogs()` 会把两边的 `blogs/list/items/blogList/shieldBlogs` 合起来去重，路由是 `/api/shields`，入口在「我的 → 屏蔽用户 → 从账号同步」。
