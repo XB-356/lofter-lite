@@ -102,6 +102,7 @@ test/                node:test：server(HTTP) / lofter(归一化) / cache / live
 - 详情页的「分享」在 APK 里走**系统分享面板**（`api('/api/share')` → `Bridge.share(title, url)` 用 `Intent.ACTION_SEND`），不要再 `openExternal` 把人丢进浏览器；WebView 里没有 `navigator.share`，网页版兜底是复制链接 + toast。
 - 「查看全部 N 条回复」要先按 id 去重：`commentEl` 已经把 `c.l2` 的前两条渲染进 `.cmt-replies` 了，再整份 append 接口结果就会重复。做法是收集 `list.querySelectorAll('.cmt')` 的 id，只插没出现过的。
 - 返回上一页要回到原来的滑动位置：路由层统一处理（`saveScroll()` 滚动时记录 `currentRoute` → `scrollPos`，`render()` 的 `finally` 调 `restoreScroll(id, y)`），因为内容是异步加载的，`restoreScroll` 每 100ms 追一轮直到高度够、最多 20 轮；恢复期间 `restoringScroll` 为 true，`saveScroll()` 直接返回（否则会把目标值覆盖成 0）；用户 `touchstart`/`wheel` 一动手就停止恢复。不要在视图函数里各写一套 `window.scrollTo`，也别往 `viewHome` 里加恢复逻辑。
-- 关注页大卡片上方的多图缩略条是**固定 3 宫格**（`grid-template-columns: repeat(3, 1fr)`，每张约 100px，第 3 张右下角标 `+N`）。以前是每张 `width: 61.8%`、容器横滑，一张就占 2/3 屏，作者烤在图里的水印被放大 1.8 倍显得很突兀 —— 别再改回宽图横滑。
+- 关注页大卡片上方的多图缩略条是**横向滑动**：`.big-thumb-strip` 用 flex + `overflow-x: auto`，每张 `.thumb-wrap` 宽 `77.3%`（下一张露出一截提示可滑），图片按原比例、`max-height: 420px`，最后一张右下角标 `+N`；取图参数用 `thumb(src, 720)`（320 的图放到 240px 宽会被放大约 2 倍，很糊）。3 宫格、`61.8%` 宽横滑都是试过被用户否掉的版本，别再改回去。
+- 标签页会过滤命中「标签屏蔽 / 屏蔽用户」的作品：如果一个标签下的作品全被过滤，页面本来会只剩空白。`viewTag` 现在会先最多多翻 3 页（上游 `hasMore` 可能一直为 true，必须有上限），仍然为空时显示「已屏蔽 #xxx…到我的 → 标签屏蔽取消」或「都被屏蔽标签或屏蔽用户过滤掉了」，改这段别把兜底删掉。
 - **本客户端没有「发布作品」入口**：LOFTER 没有开放第三方发布接口，`https://www.lofter.com/post/create` 在非官方 App 里只会渲染官网落地页（「下载APP」/「登录/注册」），自家假编辑器又只能存草稿再手动粘贴。所以我的页不提供发布入口，`viewCompose` / `composeDraft` / `Bridge.openEditor` 都已删除；`LoginActivity` 只留给登录用。
 - 请求日志会打印所有非 `/api/` 路径；接口出错打印 `[api]` 行带状态码和耗时，排障先看它。
