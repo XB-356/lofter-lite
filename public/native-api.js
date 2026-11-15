@@ -355,16 +355,36 @@
     };
   }
 
+  // 作品属地在上游是个 JSON 字符串：{"country":"中国","province":"福建","shorten":"闽"}
+  function ipProvince(raw) {
+    if (!raw) return '';
+    if (typeof raw === 'object') return raw.province || raw.country || '';
+    const s = String(raw).trim();
+    if (s.charAt(0) !== '{') return s.slice(0, 20);
+    try {
+      const o = JSON.parse(s);
+      return o.province || o.country || '';
+    } catch (e) {
+      return '';
+    }
+  }
+
   async function blogHome(name, offset, limit) {
     const resp = await callApi(BLOG_URL, {
       blogdomain: name + '.lofter.com', method: 'getPostLists', limit: limit || 20, offset: offset || 0,
       checkpwd: 1, supportposttypes: POST_TYPES, postdigestnew: 1, needgetpoststat: 1,
     });
     const posts = (resp.posts || []).map(normPost).filter(Boolean).filter((p) => !p.ai && !p.locked);
+    // topPost 是博主自己置顶的那篇（形状和 posts[] 元素一样，里面还套一层 .post）
+    const pinned = resp.topPost ? normPost(resp.topPost) : null;
     const bi = resp.blogInfo || (resp.posts && resp.posts[0] && resp.posts[0].post && resp.posts[0].post.blogInfo) || {};
+    const firstRaw = (resp.posts && resp.posts[0] && resp.posts[0].post) || (resp.topPost && resp.topPost.post) || {};
     return {
       blog: { name: bi.blogName || name, nick: bi.blogNickName || name, avatar: bi.bigAvaImg || '', intro: bi.selfIntro || '', id: bi.blogId || 0, url: 'https://' + name + '.lofter.com' },
       posts,
+      pinned: pinned && !pinned.ai && !pinned.locked ? pinned : null,
+      // 账号没有「IP 属地」字段，借最近一篇作品的属地顶上（和作品页里显示的同一个来源）
+      ip: ipProvince(firstRaw.ipLocation),
       nextOffset: typeof resp.offset === 'number' ? resp.offset : (offset || 0) + posts.length,
       hasMore: posts.length > 0,
     };
@@ -612,6 +632,8 @@
           name,
           avatar,
           intro: deepFind(b, ['selfIntro', 'intro', 'description']),
+          // 个人主页要显示「IP 属地」和「LOFTER ID」，这两个字段在 blogdata / meInfo 里不总是同一层
+          ip: deepFind(b, ['ipLocation', 'ipRegion', 'ipArea', 'ip']) || '',
           id: deepFind(b, ['blogId', 'id']),
           counts: {
             following: Number(stat.followingCount || blogCounts.followingCount || deepFind(counts, ['followCount', 'follows', 'following', 'attentionCount']) || 0),

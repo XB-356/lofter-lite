@@ -2626,12 +2626,27 @@
     const profileError = store.settings.profileError || '';
     const subCount = (store.settings.subscribedTags || []).length;
     const counts = (profile && profile.counts) || {};
+    // 置顶作品要在资料卡下面显示，顺便把「个人简介」的折叠状态也一起算好
+    let pinned = null;
+    let homeIp = '';
+    if (logged && profile && profile.name) {
+      try {
+        const home = await api('/api/blog', { name: profile.name });
+        pinned = home && home.pinned ? home.pinned : null;
+        homeIp = (home && home.ip) || '';
+      } catch (e) {}
+    }
 
     const meta = [];
-    if (profile && profile.name) meta.push('@' + profile.name);
-    if (counts.followers) meta.push(num(counts.followers) + ' 粉丝');
-    if (counts.following) meta.push(num(counts.following) + ' 关注');
+    if (profile && profile.name) meta.push('LOFTER ID：' + profile.name);
+    // LOFTER 不给账号级的 IP 属地，只有每篇作品自己的属地；拿自己最近一篇的（和 App 里作品页看到的一致）
+    const ipText = (profile && profile.ip) || homeIp;
+    if (ipText) meta.push('IP 属地：' + ipText);
+    const subMeta = [];
+    if (counts.followers) subMeta.push(num(counts.followers) + ' 粉丝');
+    if (counts.following) subMeta.push(num(counts.following) + ' 关注');
 
+    const intro = (profile && profile.intro) || '';
     const head = logged
       ? `<div class="me-profile">
           ${profile && profile.avatar
@@ -2639,8 +2654,12 @@
             : `<div class="me-avatar me-avatar-ph">${icon('user')}</div>`}
           <div class="me-profile-main">
             <h2>${esc((profile && profile.nick) || 'LOFTER 用户')}</h2>
-            <p>${esc(meta.join(' · ') || 'LOFTER 已登录')}</p>
-            ${profile && profile.intro ? `<p class="me-intro">${esc(profile.intro)}</p>` : ''}
+            <p class="me-sub">${esc(subMeta.join(' · ') || 'LOFTER 已登录')}</p>
+            ${meta.length ? `<p class="me-meta">${esc(meta.join('　'))}</p>` : ''}
+            ${intro ? `<div class="me-intro-wrap">
+              <p class="me-intro" id="me-intro">${esc(intro)}</p>
+              <button class="me-intro-toggle" id="me-intro-toggle" hidden>展开</button>
+            </div>` : ''}
           </div>
           <button class="acc-btn" id="switch-acc">切换</button>
         </div>`
@@ -2653,8 +2672,23 @@
           ${NATIVE ? '<button class="acc-btn" id="acc-btn">登录</button>' : ''}
         </div>`;
 
+    const pinnedHtml = pinned
+      ? `<div class="pinned-card">
+          <div class="pinned-label">置顶作品</div>
+          <a class="pinned-link" href="#/post/${pinned.author.id}/${pinned.id}">
+            ${pinned.cover ? `<img class="pinned-cover" src="${esc(thumb(pinned.cover, 240))}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : ''}
+            <div class="pinned-main">
+              <div class="pinned-title">${esc(pinned.title || pinned.digest || '置顶作品')}</div>
+              <div class="pinned-sub">${esc((pinned.digest && pinned.title) ? pinned.digest : '')}</div>
+            </div>
+            ${icon('chevron')}
+          </a>
+        </div>`
+      : '';
+
     viewEl.innerHTML = `
       ${head}
+      ${pinnedHtml}
       ${logged && !profile && profileError ? `<div class="profile-error">
         <span>账号资料读取失败：${esc(profileError)}</span>
         <button id="retry-profile">重试</button>
@@ -2703,6 +2737,18 @@
       if (nativeApi && nativeApi.switchAccount) nativeApi.switchAccount();
       else if (nativeApi) { nativeApi.logout(); setTimeout(() => nativeApi.login(), 500); }
     });
+    // 简介超过两行才给「展开」，短简介就别显示按钮
+    const introEl = $('#me-intro');
+    const introBtn = $('#me-intro-toggle');
+    if (introEl && introBtn) {
+      const overflow = introEl.scrollHeight > introEl.clientHeight + 2;
+      introBtn.hidden = !overflow;
+      if (overflow) introEl.classList.add('clamped');
+      introBtn.addEventListener('click', () => {
+        const open = introEl.classList.toggle('open');
+        introBtn.textContent = open ? '收起' : '展开';
+      });
+    }
     $('#logout-btn')?.addEventListener('click', () => {
       if (confirm('退出 LOFTER 登录？')) nativeApi.logout();
     });
