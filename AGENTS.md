@@ -62,7 +62,7 @@ test/                node:test：server(HTTP) / lofter(归一化) / cache / live
 - `desktop/` 是 C#：只能写 **C# 5** 语法（系统自带 csc.exe 是 .NET Framework 4.x 的旧编译器），不要用字符串内插、`?.`、`nameof`、`=>` 表达式体成员等新语法。
 - `desktop/src/Launcher.cs`、`desktop/build.ps1` 这类含中文的 `.cs` / `.ps1` **必须存成 UTF-8 with BOM**：csc 与 Windows PowerShell 5.1 默认按 ANSI(GBK) 读源码，没 BOM 会乱码甚至语法错误。同理，**不要用 `Get-Content`/`Set-Content` 改含中文的文件**（PS 5.1 默认按 GBK 解码，会把 UTF-8 中文写坏），要用 `[IO.File]::ReadAllText($p,[Text.UTF8Encoding]::new($false))` + `WriteAllText`。
 - APK 的 WebView 调试只在 debug 包生效：`aapt --debug-mode` 写 `debuggable=true` + `MainActivity` 里按 `FLAG_DEBUGGABLE` 调 `setWebContentsDebuggingEnabled(true)`。release 包不要带这些。
-- 「不想看」有四种，别混在一起：`blockedTags`（标签屏蔽）、`blockedKeywords`（关键词屏蔽：标题/摘要/标签命中即隐藏）、`mutedBlogs`（**屏蔽用户**：只在这台设备上隐藏，不通知对方、不写账号；可从账号同步「不想看 TA 的动态」）、`blockedBlogs`（**拉黑**：账号级黑名单的本地镜像，来自 `/api/sync-blocks`）。过滤统一走 `isBlockedPost()`，不要在渲染处各写一套；四个入口分别是 `#/blocked`、`#/keywords`、`#/muted`、`#/blacklist`。
+- 「不想看」有四种，别混在一起：`blockedTags`（标签屏蔽）、`blockedKeywords`（关键词屏蔽：标题/摘要/标签命中即隐藏）、`mutedBlogs`（**屏蔽用户**：只在这台设备上隐藏，不通知对方、不写账号）、`blockedBlogs`（**拉黑**：账号级黑名单的本地镜像，来自 `/api/sync-blocks`）。过滤统一走 `isBlockedPost()`，不要在渲染处各写一套。入口只有「我的 → 屏蔽」一个，进去后顶栏 tab 切换四个子页：`#/muted`（屏蔽用户）、`#/blocked`（屏蔽标签）、`#/keywords`（关键词）、`#/blacklist`（拉黑用户），tab 条是 `blockTabs(active)`。
 
 ## 不要做
 
@@ -133,4 +133,4 @@ test/                node:test：server(HTTP) / lofter(归一化) / cache / live
 - **划线评的字段就是 `quote`**（真机样例 https://xinjinjumin4875273.lofter.com/post/75d1bdcd_34cbd05c5 确认）：评论对象上可能多一个 `quote` 字符串，就是被划住的原文。`quoteOf()` 里 `c.quote` 要排第一，其余 `quoteContent/quoteText/...` 只是兜底。没有 `quote` 的普通评论不要显示引用块。
 - **审核中的作品要过滤**：`post.auditing` / `post.newVersionAuditing` 为 true 时对外不可见（作者本人能看到），`normalizePost` 归一化成 `p.audit`，列表和主页统一 `!p.ai && !p.draft && !p.audit`。别拿 `valid` / `allowView` 判断——正常发布的帖子这两个字段也是 0。
 - **关键词屏蔽是本机功能**（`store.settings.blockedKeywords`）：在 `isBlockedPost()` 里把标题 + 摘要 + 标签拼成一个字符串，任一关键词（不区分大小写）命中就隐藏；不要塞进服务端过滤，否则导入导出和开关都不好做。
-- **账号级「不想看 TA 的动态」有两处接口**（都要登录）：推荐流屏蔽 `GET /v1.1/shieldrecommanage.api?product=…&optype=get&offset=0&limit=100`，关注流屏蔽 `POST /timeline/manage.json`（body `op=get`）。`shieldedBlogs()` 会把两边的 `blogs/list/items/blogList/shieldBlogs` 合起来去重，路由是 `/api/shields`，入口在「我的 → 屏蔽用户 → 从账号同步」。
+- **`shieldrecommanage.api` 返回的是关注列表，不是「不想看的人」名单**（2026-11 实测：`GET /v1.1/shieldrecommanage.api?product=…&optype=get&offset=0&limit=100` 回的 66 条 `shieldUserId` 全部在 `userfollowing.api` 的关注列表里）。所以「从账号同步屏蔽用户」的入口已经删掉，`shieldedBlogs()` / `/api/shields` 也一起删了，别照着再接一遍。真要接这个功能，得先确认官方 App 里那个入口对应的请求；`/api/blog-brief`（`blogBriefById()`）保留着，用来给只有用户 ID 的本机屏蔽条目补名字。
