@@ -10,6 +10,28 @@
   const BLOG_URL = 'https://api.lofter.com/v2.0/blogHomePage.api?product=lofter-iphone-10.0.0';
   const POST_TYPES = '1,2,3,4,5,6';
 
+  // 写操作（点赞/关注/评论/分享）上游要校验「设备指纹」：缺 portrait 会一直回
+  // meta.status=4102 参数异常（2026-11 真机逐个试出来的，官方客户端就是带这个头 + 表单字段）。
+  // 值照官方客户端的格式拼：一个 alg=none 的 JWT，载荷是设备/手机号等字段。
+  function b64u(s) {
+    try { return btoa(unescape(encodeURIComponent(s))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
+    catch (e) { return ''; }
+  }
+  const DEVICE_PORTRAIT = (() => {
+    const payload = { imei: '3451efd56bgg6h47', androidId: '3451efd56bgg6h47', oaid: '32b4d2c348650842', mac: '02:00:00:00:00:00', phone: '15934867293' };
+    return b64u(JSON.stringify({ alg: 'none', typ: 'JWT' })) + '.' + b64u(JSON.stringify(payload)) + '.';
+  })();
+  const WRITE_HEADERS = {
+    'User-Agent': 'LOFTER-Android 8.0.12 (23127PN0CC; Android 14; null) WIFI',
+    Accept: '*/*',
+    lofproduct: 'lofter-android-8.0.12',
+    market: 'vivo',
+    deviceid: '3451efd56bgg6h47',
+    androidid: '3451efd56bgg6h47',
+    'x-device': 'qv+Dz73SObtbEFG7P0Gq12HkjzNb+iOK6KHWTPKHBTEZu26C6MJOMukkAG7dETo2',
+    portrait: DEVICE_PORTRAIT,
+  };
+
   // ---------------- 原生请求 ----------------
   const pending = new Map();
   let seq = 0;
@@ -946,30 +968,32 @@
       postid: String(postId),
       blogid: String(blogId),
       scene: 'note',
+      portrait: DEVICE_PORTRAIT,
     };
     const text = await req(url, {
       method: 'POST',
       body: new URLSearchParams(form).toString(),
-      headers: { 'User-Agent': APP_UA, Accept: '*/*' },
+      headers: WRITE_HEADERS,
     });
     let j;
     try { j = JSON.parse(text); } catch (e) { throw new Error('点赞返回异常'); }
     const meta = (j && j.meta) || {};
     const ok = !!(j && (meta.status === 200 || j.code === 0));
-    // 4102 既可能是「已经喜欢过」，也可能是参数/权限不对——两种都不能直接当成功
-    if (!ok && meta.status !== 4102) throw new Error(meta.msg || (j && j.msg) || '点赞失败');
-
-    // 回读确认：只有详情里的 liked 改成目标值才算真的同步到了账号
-    let actual = null;
-    try { actual = await likedState(blogId, postId); } catch (e) { actual = null; }
-    if (actual === null) {
-      if (!ok) throw new Error('LOFTER 没有接受这次操作（可能被限制）');
-      return { ok: true, unverified: true };
+    if (ok) return { ok: true };
+    if (meta.status === 4071) {
+      throw new Error('LOFTER 要求滑动验证（风控），请稍后再试，或先在官方 App 里点一次喜欢');
     }
-    if (actual === !!like) return { ok: true };
-    throw new Error(like
-      ? 'LOFTER 没有接受这次喜欢（可能被限制或参数不被接受）'
-      : 'LOFTER 没有接受取消喜欢');
+    // 4102「参数异常」：可能是已经处于目标状态（重复点赞/取消），也可能真的没成功。
+    // 用详情里的 liked 判断，别把失败当成功（曾经就是这么静默丢点赞的）。
+    if (meta.status === 4102) {
+      let actual = null;
+      try { actual = await likedState(blogId, postId); } catch (e) { actual = null; }
+      if (actual === !!like) return { ok: true, already: true };
+      throw new Error(like
+        ? 'LOFTER 没有接受这次喜欢（可能被限制）'
+        : 'LOFTER 没有接受取消喜欢（可能被限制）');
+    }
+    throw new Error(meta.msg || (j && j.msg) || '点赞失败');
   }
 
   // APK：弹系统分享面板（Bridge.share 里走 Intent.ACTION_SEND），不要把人丢进浏览器
