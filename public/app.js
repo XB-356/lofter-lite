@@ -2647,8 +2647,9 @@
     });
   }
 
-  // ================= 页面：关注（动态 / 订阅标签） =================
-  let followTab = 'feed';
+  // ================= 页面：关注（动态 / 订阅） =================
+  let followTab = 'feed'; // feed | subscribe
+  let followSubTab = 'tags'; // tags | collections
   const followCache = { items: [], seen: new Set(), cursor: '0,0,0', loading: false, done: false };
   const tagCardCache = new Map();
   const TAG_CARD_TTL = 10 * 60 * 1000;
@@ -2718,7 +2719,7 @@
     viewEl.innerHTML = `
       <div class="channels" id="follow-tabs">
         <button class="ch ${followTab === 'feed' ? 'on' : ''}" data-ftab="feed">动态</button>
-        <button class="ch ${followTab === 'tags' ? 'on' : ''}" data-ftab="tags">订阅标签</button>
+        <button class="ch ${followTab === 'subscribe' ? 'on' : ''}" data-ftab="subscribe">订阅</button>
       </div>
       <div id="follow-body"></div>`;
 
@@ -2730,7 +2731,7 @@
     });
 
     if (followTab === 'feed') renderFollowFeed();
-    else renderTagGrid();
+    else renderSubscribe();
 
     const body = $('#follow-body');
     let sx = 0, sy = 0, tracking = false;
@@ -2745,9 +2746,82 @@
       const t = e.changedTouches[0];
       const dx = t.clientX - sx, dy = t.clientY - sy;
       if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
-      const next = dx < 0 ? 'tags' : 'feed';
+      const next = dx < 0 ? 'subscribe' : 'feed';
       if (next !== followTab) { followTab = next; render(); }
     }, { passive: true });
+  }
+
+  // 订阅页：上面一条「订阅标签 / 订阅合集」，下面按选择渲染
+  function renderSubscribe() {
+    const body = $('#follow-body');
+    body.innerHTML = `
+      <div class="sub-tabs" id="sub-tabs">
+        <button class="st ${followSubTab === 'tags' ? 'on' : ''}" data-stab="tags">订阅标签</button>
+        <button class="st ${followSubTab === 'collections' ? 'on' : ''}" data-stab="collections">订阅合集</button>
+      </div>
+      <div id="sub-body"></div>`;
+    $('#sub-tabs').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-stab]');
+      if (!b || b.dataset.stab === followSubTab) return;
+      followSubTab = b.dataset.stab;
+      render();
+    });
+    if (followSubTab === 'tags') renderTagGrid();
+    else renderSubscribedCollections();
+  }
+
+  // 订阅合集的每一行：封面 + 名字 + 作者 + 作品数 + 上次更新 + 未读数
+  async function renderSubscribedCollections() {
+    const body = $('#sub-body');
+    if (!NATIVE) {
+      body.innerHTML = `<div class="empty"><div class="big">📚</div>
+        <p>订阅合集要读账号数据，请在 App 内查看。</p></div>`;
+      return;
+    }
+    body.innerHTML = '<div class="tag-grid-head">正在读取订阅合集…</div>';
+    let data;
+    try {
+      data = await api('/api/subscribed-collections', { offset: 0 });
+    } catch (e) {
+      body.innerHTML = `<div class="empty"><div class="big">📚</div><p>${esc(e.message || '读取失败')}</p></div>`;
+      return;
+    }
+    const list = (data && data.list) || [];
+    if (!list.length) {
+      body.innerHTML = `<div class="empty"><div class="big">📚</div>
+        <p>还没有订阅任何合集。在作品页点合集或博主页的合集列表里可以订阅。</p></div>`;
+      return;
+    }
+    const since = (ts) => {
+      if (!ts) return '还没更新过';
+      const d = new Date(Number(ts));
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    };
+    body.innerHTML = `<div class="tag-grid-head">共 ${list.length} 个订阅合集</div>
+      <div class="coll-list">${list.map((c) => {
+        const href = c.author && c.author.name
+          ? `#/collection/${encodeURIComponent(c.author.name)}/${c.blogId}/${c.id}`
+          : '';
+        return `<a class="coll-row" ${href ? `href="${href}"` : ''} data-cid="${c.id}" data-bid="${c.blogId}" data-name="${esc(c.author && c.author.name || '')}">
+          <img class="coll-cover" src="${esc(c.cover ? thumb(c.cover, 200) : '')}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
+          <div class="coll-main">
+            <div class="coll-name">${esc(c.name)}</div>
+            <div class="coll-sub">${c.author && (c.author.nick || c.author.name) ? esc(c.author.nick || c.author.name) : '未知作者'} · ${c.postCount || 0} 件作品</div>
+            <div class="coll-meta">上次更新 ${since(c.time)}${c.unread ? ` · <b>${c.unread} 更新</b>` : ''}</div>
+          </div>
+          <span class="coll-arrow">${icon('chevron')}</span>
+        </a>`;
+      }).join('')}</div>`;
+
+    // 列表里可能没带 blogName：点进合集时用详情页兜底解析
+    body.querySelectorAll('.coll-row').forEach((row) => {
+      row.addEventListener('click', (e) => {
+        if (row.getAttribute('href')) return;
+        e.preventDefault();
+        nav(`#/collection/${encodeURIComponent(row.dataset.name)}/${row.dataset.bid}/${row.dataset.cid}`);
+      });
+    });
   }
 
   function resetFollowCache() {
@@ -3020,7 +3094,7 @@
 
   // 大卡片 + 滚到眼前才拉数据（和关注流一样的节奏），冷启动先用缓存里的图铺满
   async function renderTagGrid() {
-    const body = $('#follow-body');
+    const body = $('#sub-body') || $('#follow-body');
     let tags = store.settings.subscribedTags || [];
     if (!tags.length) {
       const acc = await syncAccount();

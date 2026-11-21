@@ -1135,6 +1135,72 @@
     };
   }
 
+  // 订阅合集（需要登录）：列表 GET /newapi/subscribeCollection/list.json?offset=
+  // 每个合集再补一次详情（作品数 / 上次更新 / 作者），失败就只显示列表里有的字段
+  async function subscribedCollections(offset) {
+    const off = Number(offset) || 0;
+    const text = await req('https://api.lofter.com/newapi/subscribeCollection/list.json?offset=' + off, {
+      headers: { 'User-Agent': APP_UA, Accept: '*/*' },
+    });
+    let j;
+    try { j = JSON.parse(text); } catch (e) { throw new Error('订阅合集返回异常'); }
+    if (j.code !== 0) throw new Error(j.msg || '订阅合集读取失败');
+    const d = j.data || {};
+    const list = d.collections || [];
+    const out = [];
+    for (const it of list) {
+      if (!it) continue;
+      const item = {
+        id: Number(it.collectionId) || 0,
+        blogId: Number(it.blogId) || 0,
+        name: it.name || '未命名合集',
+        cover: it.coverUrl || '',
+        unread: Number(it.unreadCount) || 0,
+        latest: Array.isArray(it.latestPosts) ? it.latestPosts.filter(Boolean).slice(0, 3) : [],
+        author: { id: Number(it.blogId) || 0, name: '', nick: '', avatar: '' },
+        postCount: 0,
+        time: 0,
+      };
+      if (item.id && item.blogId) {
+        try {
+          const res2 = await req(COLLECTION_URL, {
+            method: 'POST',
+            body: new URLSearchParams({
+              blogdomain: '',
+              method: 'getCollectionDetail',
+              blogid: String(item.blogId),
+              collectionid: String(item.id),
+              offset: '0',
+              order: '1',
+            }).toString(),
+            headers: COLLECTION_HEADERS,
+          });
+          const doc = JSON.parse(res2);
+          const resp = doc.response || {};
+          const c = resp.collection || {};
+          const bi = resp.blogInfo || {};
+          if (c.name) item.name = c.name;
+          if (c.coverUrl) item.cover = c.coverUrl;
+          item.postCount = Number(c.postCount) || 0;
+          item.time = Number(c.lastPublishTime) || Number(c.updateTime) || 0;
+          item.author = {
+            id: Number(bi.blogId) || item.blogId,
+            name: bi.blogName || '',
+            nick: bi.blogNickName || bi.blogName || '',
+            avatar: bi.bigAvaImg || '',
+          };
+        } catch (e) { /* 详情拿不到就保留列表字段 */ }
+      }
+      out.push(item);
+    }
+    return {
+      list: out,
+      count: Number(d.subscribeCollectionCount) || out.length,
+      next: Number(d.offset) || 0,
+      hasMore: list.length > 0 && Number(d.offset) > off,
+    };
+  }
+
   async function replies(blogId, postId, commentId, offset) {
     const base = 'https://www.lofter.com/comment/l2/page.json?postId=' + postId
       + '&blogId=' + blogId + '&offset=' + (offset || 0) + '&product=' + PRODUCT;
@@ -1578,6 +1644,14 @@
     '/api/tag': (p) => cached('tag:' + (p.sort || 'new') + ':' + p.name + ':' + (p.offset || 0), 120e3,
       () => tagPosts(p.name, Number(p.offset) || 0, p.sort)).then((page) => Object.assign({ tag: p.name, sort: p.sort || 'new' }, page)),
     '/api/taginfo': (p) => tagInfo(p.name),
+    '/api/tag-rank': (p) => tagRank(p.tag, {
+      offset: Number(p.offset) || 0,
+      type: p.type || 'total',
+      range: Number(p.range) || 0,
+      postTypes: p.postTypes === undefined ? '' : String(p.postTypes),
+      recentDay: Number(p.recentDay) || 0,
+    }),
+    '/api/subscribed-collections': (p) => subscribedCollections(Number(p.offset) || 0),
     '/api/post': (p) => postDetail(p.blogId, p.postId),
     '/api/comments': (p) => comments(p.blogId, p.postId, Number(p.offset) || 0),
     '/api/follow': (p) => followFeed(p.cursor || '0,0,0'),

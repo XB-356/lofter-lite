@@ -1551,3 +1551,18 @@ input[type="search"]::-webkit-search-decoration { -webkit-appearance: none; appe
 .filt-chips .chip { height: 32px; padding: 0 14px; font-size: 13px; }
 .filt-actions { display: flex; gap: 9px; margin-top: 20px; }
 .filt-actions .btn { flex: 1; }
+
+/* ---- 关注页：订阅（订阅标签 / 订阅合集） ---- */
+.sub-tabs { display: flex; gap: 8px; padding: 12px 12px 2px; }
+.sub-tabs .st { flex: none; height: 30px; padding: 0 14px; border: 1px solid var(--line); border-radius: 99px; background: var(--card); color: var(--text-2); font-size: 12.5px; }
+.sub-tabs .st.on { background: var(--accent-weak); border-color: transparent; color: var(--accent); font-weight: 600; }
+.coll-list { padding: 4px 12px 0; display: flex; flex-direction: column; gap: 10px; }
+.coll-row { display: flex; align-items: center; gap: 12px; background: var(--card); border-radius: 14px; padding: 10px 12px; color: inherit; text-decoration: none; }
+.coll-cover { width: 54px; height: 54px; border-radius: 10px; object-fit: cover; background: var(--bg-soft); flex: none; }
+.coll-main { flex: 1; min-width: 0; }
+.coll-name { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.coll-sub { font-size: 12px; color: var(--text-2); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.coll-meta { font-size: 11.5px; color: var(--sub); margin-top: 3px; }
+.coll-meta b { color: var(--accent); font-weight: 600; }
+.coll-arrow { color: var(--sub); flex: none; display: inline-flex; }
+.coll-arrow svg { width: 18px; height: 18px; }
