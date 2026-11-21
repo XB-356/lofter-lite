@@ -119,6 +119,7 @@
     check: '<path d="m5 12.6 4.4 4.3L19 6.9"/>',
     share: '<circle cx="6.2" cy="12" r="2.4"/><circle cx="17.6" cy="5.8" r="2.4"/><circle cx="17.6" cy="18.2" r="2.4"/><path d="m8.4 10.9 7-3.9M8.4 13.1l7 3.9"/>',
     filter: '<path d="M3.6 5.4h16.8l-6.6 7.6v6.2l-3.6 1.8v-8z"/>',
+    calendar: '<rect x="3.4" y="5.2" width="17.2" height="15.2" rx="2.4"/><path d="M3.4 10h17.2M8 3.4v3.4M16 3.4v3.4"/>',
     shield: '<path d="M12 3.2 19.4 6v5.6c0 4.3-3 7.6-7.4 9.2-4.4-1.6-7.4-4.9-7.4-9.2V6z"/>',
     eye: '<path d="M2.6 12S5.9 6.2 12 6.2 21.4 12 21.4 12 18.1 17.8 12 17.8 2.6 12 2.6 12z"/><circle cx="12" cy="12" r="2.8"/>',
   };
@@ -1339,16 +1340,16 @@
     const RANK_TYPES = [['total', '总榜'], ['month', '月榜'], ['week', '周榜'], ['date', '日榜']];
     const RANK_SCOPES = [['0', '不限'], ['1', '我关注的人'], ['2', '没看过的']];
     const RANK_FORMS = [['', '不限'], ['1', '文字'], ['2', '图片']];
-    const RANK_DAYS = [['0', '不限'], ['1', '一天'], ['7', '一周'], ['30', '一个月']];
     const savedRank = store.settings.tagRank || {};
     const rank = {
       type: savedRank.type || 'total',
       range: Number(savedRank.range) || 0,
       postTypes: savedRank.postTypes === undefined ? '' : String(savedRank.postTypes),
-      recentDay: Number(savedRank.recentDay) || 0,
+      ym: /^\d{4}-\d{2}$/.test(String(savedRank.ym || '')) ? String(savedRank.ym) : '',
     };
+    const ymLabel = (v) => (v ? v.replace('-', ' 年 ') + ' 月' : '不限');
     function rankFilterCount() {
-      return (rank.range ? 1 : 0) + (rank.postTypes !== '' ? 1 : 0) + (rank.recentDay ? 1 : 0);
+      return (rank.range ? 1 : 0) + (rank.postTypes !== '' ? 1 : 0) + (rank.ym ? 1 : 0);
     }
     function paintRankBar() {
       const bar = $('#rank-bar');
@@ -1356,7 +1357,11 @@
       if (sort !== 'hot') { bar.hidden = true; bar.innerHTML = ''; return; }
       bar.hidden = false;
       const n = rankFilterCount();
-      bar.innerHTML = RANK_TYPES.map(([v, t]) => `<button class="chip ${rank.type === v ? 'on' : ''}" data-rtype="${v}">${t}</button>`).join('')
+      // 选了年月就等于「按这个月的总榜看」，其它榜期没有意义，收起来只留一个月份 chip
+      const types = rank.ym
+        ? `<button class="chip on" id="btn-rank-ym">${icon('calendar')}${ymLabel(rank.ym)}</button>`
+        : RANK_TYPES.map(([v, t]) => `<button class="chip ${rank.type === v ? 'on' : ''}" data-rtype="${v}">${t}</button>`).join('');
+      bar.innerHTML = types
         + `<button class="chip rank-filter ${n ? 'on' : ''}" id="btn-rank-filter">${icon('filter')}筛选${n ? ' · ' + n : ''}</button>`;
     }
     // 换榜 / 改筛选后从第一页重新拉，只清内容区，不整页重绘（保留滚动位置以外的状态）
@@ -1367,8 +1372,83 @@
       appendSkeletons(m, 6);
       $('#loadmore').innerHTML = '';
     }
+    function saveRank() {
+      store.settings.tagRank = Object.assign({}, rank);
+      store.saveSettings();
+    }
+    function applyRankChange() {
+      saveRank();
+      paintRankBar();
+      resetRankFeed();
+      load();
+    }
+    // 年 / 月滚轮：两列 scroll-snap，滚完后按 scrollTop 取整算选中项
+    function openYmPicker() {
+      const ITEM = 40;
+      const VISIBLE = 5;
+      const thisYear = new Date().getFullYear();
+      const years = [0];
+      for (let y = thisYear; y >= 2014; y--) years.push(y);
+      const months = [0];
+      for (let mth = 1; mth <= 12; mth++) months.push(mth);
+      const cur = /^\d{4}-\d{2}$/.test(rank.ym) ? rank.ym : '';
+      const selY = cur ? Number(cur.slice(0, 4)) : 0;
+      const selM = cur ? Number(cur.slice(5, 7)) : 0;
+      const col = (key, list, sel, fmt) => `
+        <div class="ym-col" data-col="${key}">
+          ${list.map((v) => `<div class="ym-item ${v === sel ? 'on' : ''}" data-v="${v}">${fmt(v)}</div>`).join('')}
+        </div>`;
+      openSheet(`
+        <h3 class="sheet-title">发布时间</h3>
+        <p class="hint">滚到想看的年份和月份，点「查看结果」。</p>
+        <div class="ym-wheel" id="ym-wheel">
+          <div class="ym-mask top"></div>
+          <div class="ym-mask bottom"></div>
+          <div class="ym-cols">
+            ${col('y', years, selY, (v) => (v ? v + ' 年' : '不限'))}
+            ${col('m', months, selM, (v) => (v ? v + ' 月' : '不限'))}
+          </div>
+        </div>
+        <div class="filt-actions">
+          <button class="btn ghost" id="ym-clear">清除</button>
+          <button class="btn primary" id="ym-apply">查看结果</button>
+        </div>`);
+      const colEls = [...document.querySelectorAll('#ym-wheel .ym-col')];
+      const pad = (ITEM * (VISIBLE - 1)) / 2;
+      colEls.forEach((el) => {
+        el.style.paddingTop = pad + 'px';
+        el.style.paddingBottom = pad + 'px';
+        const sel = el.querySelector('.ym-item.on');
+        if (sel) el.scrollTop = sel.offsetTop - pad;
+        el.addEventListener('scroll', () => {
+          clearTimeout(el._t);
+          el._t = setTimeout(() => {
+            const idx = Math.round(el.scrollTop / ITEM);
+            [...el.children].forEach((c, i) => c.classList.toggle('on', i === idx));
+          }, 90);
+        }, { passive: true });
+      });
+      const picked = () => {
+        const yi = Math.round(colEls[0].scrollTop / ITEM);
+        const mi = Math.round(colEls[1].scrollTop / ITEM);
+        const y = Number((colEls[0].children[yi] || {}).dataset?.v || 0);
+        const mth = Number((colEls[1].children[mi] || {}).dataset?.v || 0);
+        if (!y) return '';
+        return `${y}-${String(mth || new Date().getMonth() + 1).padStart(2, '0')}`;
+      };
+      $('#ym-clear').addEventListener('click', () => {
+        rank.ym = '';
+        closeSheet();
+        applyRankChange();
+      });
+      $('#ym-apply').addEventListener('click', () => {
+        rank.ym = picked();
+        closeSheet();
+        applyRankChange();
+      });
+    }
     function openRankFilter() {
-      const pending = { range: rank.range, postTypes: rank.postTypes, recentDay: rank.recentDay };
+      const pending = { range: rank.range, postTypes: rank.postTypes };
       const group = (label, key, opts) => `
         <div class="filt-sec">
           <div class="filt-label">${label}</div>
@@ -1378,7 +1458,10 @@
         <h3 class="sheet-title">筛选</h3>
         ${group('内容范围', 'range', RANK_SCOPES)}
         ${group('内容形式', 'postTypes', RANK_FORMS)}
-        ${group('发布时间', 'recentDay', RANK_DAYS)}
+        <div class="filt-sec">
+          <div class="filt-label">发布时间</div>
+          <button class="filt-ym" id="filt-ym">${icon('calendar')}<span>${ymLabel(rank.ym)}</span>${icon('chevron')}</button>
+        </div>
         <div class="filt-actions">
           <button class="btn ghost" id="filt-reset">重置</button>
           <button class="btn primary" id="filt-apply">查看结果</button>
@@ -1393,21 +1476,18 @@
             });
           });
         });
+        $('#filt-ym')?.addEventListener('click', () => openYmPicker());
         $('#filt-reset')?.addEventListener('click', () => {
-          pending.range = 0; pending.postTypes = ''; pending.recentDay = 0;
+          pending.range = 0; pending.postTypes = '';
+          rank.ym = '';
           openSheet(body());
           bind();
         });
         $('#filt-apply')?.addEventListener('click', () => {
           rank.range = Number(pending.range) || 0;
           rank.postTypes = pending.postTypes === undefined ? '' : String(pending.postTypes);
-          rank.recentDay = Number(pending.recentDay) || 0;
-          store.settings.tagRank = Object.assign({}, rank);
-          store.saveSettings();
           closeSheet();
-          paintRankBar();
-          resetRankFeed();
-          load();
+          applyRankChange();
         });
       };
       bind();
@@ -1417,13 +1497,10 @@
       if (t) {
         if (t.dataset.rtype === rank.type) return;
         rank.type = t.dataset.rtype;
-        store.settings.tagRank = Object.assign({}, rank);
-        store.saveSettings();
-        paintRankBar();
-        resetRankFeed();
-        load();
+        applyRankChange();
         return;
       }
+      if (e.target.closest('#btn-rank-ym')) { openYmPicker(); return; }
       if (e.target.closest('#btn-rank-filter')) openRankFilter();
     });
     paintRankBar();
@@ -1457,7 +1534,7 @@
         const data = sort === 'hot'
           ? await api('/api/tag-rank', {
             tag: name, offset, type: rank.type,
-            range: rank.range, postTypes: rank.postTypes, recentDay: rank.recentDay,
+            range: rank.range, postTypes: rank.postTypes, ym: rank.ym,
           })
           : await api('/api/tag', { name, offset, sort });
         if (token !== navId) return;

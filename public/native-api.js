@@ -1004,16 +1004,21 @@
     const range = Number(o.range) || 0;
     const postTypes = o.postTypes === undefined || o.postTypes === null ? '' : String(o.postTypes);
     const recentDay = Number(o.recentDay) || 0;
+    // 年月筛选（官方「发布时间」滚轮）：postYm 只认 YYYYMM（带横杠返回空），
+    // 且只有 type=total 生效 —— 选了年月就强制走总榜
+    const ymText = /^\d{4}-\d{2}$/.test(String(o.ym || '')) ? String(o.ym) : '';
+    const ymCompact = ymText ? ymText.replace('-', '') : '';
+    const rankType = ymCompact ? 'total' : type;
     const form = {
       product: RANK_PRODUCT,
       tag: t,
       offset: String(off),
-      type: type,
+      type: rankType,
       postTypes: postTypes === '' ? '1,2,4' : postTypes,
       recentDay: String(recentDay),
       range: String(range),
       protectedFlag: '0',
-      postYm: '',
+      postYm: ymCompact,
       returnGiftCombination: '',
       firstpermalink: 'null',
       style: '0',
@@ -1038,10 +1043,11 @@
       posts,
       nextOffset: Number.isFinite(next) && next >= 0 ? next : -1,
       hasMore: list.length > 0 && Number.isFinite(next) && next > off,
-      type,
+      type: form.type,
       range,
       postTypes: form.postTypes,
       recentDay,
+      ym: ymText,
     };
   }
 
@@ -1650,6 +1656,7 @@
       range: Number(p.range) || 0,
       postTypes: p.postTypes === undefined ? '' : String(p.postTypes),
       recentDay: Number(p.recentDay) || 0,
+      ym: String(p.ym || ''),
     }),
     '/api/subscribed-collections': (p) => subscribedCollections(Number(p.offset) || 0),
     '/api/post': (p) => postDetail(p.blogId, p.postId),

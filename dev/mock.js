@@ -182,7 +182,7 @@ async function searchPosts(key, offset = 0) {
 }
 
 // 榜单：mock 里就是「热门」排序 + 按筛选条件裁一刀，够前端联调用
-async function tagRank(tag, { offset = 0, type = 'total', range = 0, postTypes = '', recentDay = 0 } = {}) {
+async function tagRank(tag, { offset = 0, type = 'total', range = 0, postTypes = '', recentDay = 0, ym = '' } = {}) {
   const r = await tagPosts(tag, { offset, sort: 'hot' });
   let posts = r.posts.slice();
   if (String(postTypes) === '1') posts = posts.filter((p) => p.type !== 2);
@@ -194,10 +194,18 @@ async function tagRank(tag, { offset = 0, type = 'total', range = 0, postTypes =
     const kept = posts.filter((p) => (p.time || 0) >= since);
     if (kept.length) posts = kept;
   }
+  const ymText = /^\d{4}-\d{2}$/.test(String(ym || '')) ? String(ym) : '';
+  if (ymText) {
+    const kept = posts.filter((p) => {
+      const d = new Date(Number(p.time) || 0);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` === ymText;
+    });
+    if (kept.length) posts = kept;
+  }
   const ranked = posts.map((p, i) => Object.assign({}, p, { hot: (p.hot || 0) + (posts.length - i) * 10 }));
   return {
     posts: ranked, nextOffset: r.nextOffset, hasMore: r.hasMore,
-    type, range: Number(range) || 0, postTypes, recentDay: Number(recentDay) || 0,
+    type: ymText ? 'total' : type, range: Number(range) || 0, postTypes, recentDay: Number(recentDay) || 0, ym: ymText,
   };
 }
 

@@ -363,6 +363,7 @@ const server = http.createServer(async (req, res) => {
             range: Number(q.get('range')) || 0,
             postTypes: q.get('postTypes') === null ? '' : String(q.get('postTypes')),
             recentDay: Number(q.get('recentDay')) || 0,
+            ym: String(q.get('ym') || ''),
           }));
         }
         case '/api/comments':
