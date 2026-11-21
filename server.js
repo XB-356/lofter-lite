@@ -15,7 +15,7 @@ const { categories, defaultTags } = require('./lib/catalog');
 // LOFTER_LITE_MOCK=1 → 用 dev/mock.js 的本地假数据，完全不碰外网（UI 联调 / 测试用）
 const MOCK = process.env.LOFTER_LITE_MOCK === '1';
 const dataSource = MOCK ? require('./dev/mock') : require('./lib/lofter');
-const { tagPosts, postDetail, blogHome, tagInfo, comments, searchTags, searchBlogs, searchPosts, UpstreamError } = dataSource;
+const { tagPosts, tagRank, postDetail, blogHome, tagInfo, comments, searchTags, searchBlogs, searchPosts, UpstreamError } = dataSource;
 
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || '127.0.0.1';
@@ -353,6 +353,17 @@ const server = http.createServer(async (req, res) => {
           const key = String(q.get('q') || '').trim();
           if (!key) return json(res, 400, { error: '缺少搜索关键词' });
           return json(res, 200, await searchPosts(key, Number(q.get('offset')) || 0));
+        }
+        case '/api/tag-rank': {
+          const tag = String(q.get('tag') || '').trim();
+          if (!tag) return json(res, 400, { error: '缺少标签' });
+          return json(res, 200, await tagRank(tag, {
+            offset: Number(q.get('offset')) || 0,
+            type: q.get('type') || 'total',
+            range: Number(q.get('range')) || 0,
+            postTypes: q.get('postTypes') === null ? '' : String(q.get('postTypes')),
+            recentDay: Number(q.get('recentDay')) || 0,
+          }));
         }
         case '/api/comments':
           return await handleComments(q, res);

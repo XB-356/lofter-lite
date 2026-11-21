@@ -962,6 +962,89 @@
     };
   }
 
+  // ---------------- 标签热度榜 / 筛选 ----------------
+  // 官方 App「热门」页：POST /newapi/tagPosts.json
+  //   type：total 总榜 / month 月榜 / week 周榜 / date 日榜（上游没有 year，传 year 会退回总榜）
+  //   range：0 不限 / 1 我关注的人 / 2 未看过；postTypes：'' 不限 / 1 文字 / 2 图片；recentDay：0/1/7/30
+  // 响应是 {code, msg, data:{list:[{postData:{postView, postCount}, blogInfo}], offset}}
+  const RANK_URL = 'https://api.lofter.com/newapi/tagPosts.json';
+  const RANK_PRODUCT = 'lofter-android-8.2.36';
+
+  function normRankItem(item) {
+    if (!item) return null;
+    const pd = item.postData || {};
+    const pv = pd.postView || {};
+    if (!pv.id) return null;
+    const blog = item.blogInfo || {};
+    const fi = pv.firstImage || {};
+    const merged = Object.assign({}, pv, { blogInfo: blog, postCount: pd.postCount || {} });
+    const n = normPost(merged);
+    if (!n || !n.id) return null;
+    if (!n.cover) n.cover = fi.orign || fi.middle || fi.small || '';
+    n.coverW = fi.ow || n.coverW || 0;
+    n.coverH = fi.oh || n.coverH || 0;
+    if (blog.blogName && pv.permalink) n.url = 'https://' + blog.blogName + '.lofter.com/post/' + pv.permalink;
+    n.author = {
+      id: blog.blogId || pv.blogId || 0,
+      name: blog.blogName || '',
+      nick: blog.blogNickName || blog.blogName || 'LOFTER 用户',
+      avatar: blog.bigAvaImg || '',
+      intro: blog.selfIntro || '',
+      url: blog.blogName ? 'https://' + blog.blogName + '.lofter.com' : '',
+    };
+    return n;
+  }
+
+  async function tagRank(tag, opts) {
+    const t = String(tag || '').trim();
+    if (!t) throw new Error('缺少标签');
+    const o = opts || {};
+    const off = Number(o.offset) || 0;
+    const type = String(o.type || 'total');
+    const range = Number(o.range) || 0;
+    const postTypes = o.postTypes === undefined || o.postTypes === null ? '' : String(o.postTypes);
+    const recentDay = Number(o.recentDay) || 0;
+    const form = {
+      product: RANK_PRODUCT,
+      tag: t,
+      offset: String(off),
+      type: type,
+      postTypes: postTypes === '' ? '1,2,4' : postTypes,
+      recentDay: String(recentDay),
+      range: String(range),
+      protectedFlag: '0',
+      postYm: '',
+      returnGiftCombination: '',
+      firstpermalink: 'null',
+      style: '0',
+    };
+    const text = await req(RANK_URL, {
+      method: 'POST',
+      body: new URLSearchParams(form).toString(),
+      headers: {
+        'User-Agent': APP_UA,
+        'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8',
+        Accept: '*/*',
+      },
+    });
+    let j;
+    try { j = JSON.parse(text); } catch (e) { throw new Error('榜单读取失败'); }
+    if (j.code !== 0) throw new Error(j.msg || '榜单读取失败');
+    const d = j.data || {};
+    const list = d.list || [];
+    const next = Number(d.offset);
+    const posts = list.map(normRankItem).filter(Boolean).filter((p) => !p.ai && !p.draft && !p.audit);
+    return {
+      posts,
+      nextOffset: Number.isFinite(next) && next >= 0 ? next : -1,
+      hasMore: list.length > 0 && Number.isFinite(next) && next > off,
+      type,
+      range,
+      postTypes: form.postTypes,
+      recentDay,
+    };
+  }
+
   // ---------------- 合集（专栏）----------------
   // 和「收藏夹」不是一回事：合集是作者自己给作品分组的专栏。
   // 列表：POST /v1.1/postCollection.api method=getCollectionList&blogdomain=…

@@ -1278,6 +1278,7 @@
           <button data-sort="new" class="${sort === 'new' ? 'on' : ''}">最新</button>
           <button data-sort="hot" class="${sort === 'hot' ? 'on' : ''}">热门</button>
         </div>
+        <div class="rank-bar" id="rank-bar" hidden></div>
       </div>
       <div class="feed">
         <div class="masonry" id="masonry"></div>
@@ -1332,6 +1333,105 @@
       }
     });
 
+    // ---------- 热门：总榜 / 月榜 / 周榜 / 日榜 + 筛选（内容范围 / 形式 / 发布时间） ----------
+    // 上游 /newapi/tagPosts.json 支持的 type 只有 total / month / week / date；
+    // 传 year 会被当成 total 返回，所以这里不提供「年榜」，免得点进去和总榜一模一样。
+    const RANK_TYPES = [['total', '总榜'], ['month', '月榜'], ['week', '周榜'], ['date', '日榜']];
+    const RANK_SCOPES = [['0', '不限'], ['1', '我关注的人'], ['2', '没看过的']];
+    const RANK_FORMS = [['', '不限'], ['1', '文字'], ['2', '图片']];
+    const RANK_DAYS = [['0', '不限'], ['1', '一天'], ['7', '一周'], ['30', '一个月']];
+    const savedRank = store.settings.tagRank || {};
+    const rank = {
+      type: savedRank.type || 'total',
+      range: Number(savedRank.range) || 0,
+      postTypes: savedRank.postTypes === undefined ? '' : String(savedRank.postTypes),
+      recentDay: Number(savedRank.recentDay) || 0,
+    };
+    function rankFilterCount() {
+      return (rank.range ? 1 : 0) + (rank.postTypes !== '' ? 1 : 0) + (rank.recentDay ? 1 : 0);
+    }
+    function paintRankBar() {
+      const bar = $('#rank-bar');
+      if (!bar) return;
+      if (sort !== 'hot') { bar.hidden = true; bar.innerHTML = ''; return; }
+      bar.hidden = false;
+      const n = rankFilterCount();
+      bar.innerHTML = RANK_TYPES.map(([v, t]) => `<button class="chip ${rank.type === v ? 'on' : ''}" data-rtype="${v}">${t}</button>`).join('')
+        + `<button class="chip rank-filter ${n ? 'on' : ''}" id="btn-rank-filter">${icon('filter')}筛选${n ? ' · ' + n : ''}</button>`;
+    }
+    // 换榜 / 改筛选后从第一页重新拉，只清内容区，不整页重绘（保留滚动位置以外的状态）
+    function resetRankFeed() {
+      offset = 0; done = false; shown = 0; emptyPages = 0; pumped = 0;
+      seen.clear();
+      m.reset();
+      appendSkeletons(m, 6);
+      $('#loadmore').innerHTML = '';
+    }
+    function openRankFilter() {
+      const pending = { range: rank.range, postTypes: rank.postTypes, recentDay: rank.recentDay };
+      const group = (label, key, opts) => `
+        <div class="filt-sec">
+          <div class="filt-label">${label}</div>
+          <div class="filt-chips">${opts.map(([v, t]) => `<button class="chip ${String(pending[key]) === String(v) ? 'on' : ''}" data-k="${key}" data-v="${v}">${t}</button>`).join('')}</div>
+        </div>`;
+      const body = () => `
+        <h3 class="sheet-title">筛选</h3>
+        ${group('内容范围', 'range', RANK_SCOPES)}
+        ${group('内容形式', 'postTypes', RANK_FORMS)}
+        ${group('发布时间', 'recentDay', RANK_DAYS)}
+        <div class="filt-actions">
+          <button class="btn ghost" id="filt-reset">重置</button>
+          <button class="btn primary" id="filt-apply">查看结果</button>
+        </div>`;
+      openSheet(body());
+      const bind = () => {
+        document.querySelectorAll('#sheet .filt-chips .chip').forEach((b) => {
+          b.addEventListener('click', () => {
+            pending[b.dataset.k] = b.dataset.k === 'postTypes' ? b.dataset.v : Number(b.dataset.v);
+            document.querySelectorAll('#sheet .filt-chips .chip').forEach((x) => {
+              if (x.dataset.k === b.dataset.k) x.classList.toggle('on', x === b);
+            });
+          });
+        });
+        $('#filt-reset')?.addEventListener('click', () => {
+          pending.range = 0; pending.postTypes = ''; pending.recentDay = 0;
+          openSheet(body());
+          bind();
+        });
+        $('#filt-apply')?.addEventListener('click', () => {
+          rank.range = Number(pending.range) || 0;
+          rank.postTypes = pending.postTypes === undefined ? '' : String(pending.postTypes);
+          rank.recentDay = Number(pending.recentDay) || 0;
+          store.settings.tagRank = Object.assign({}, rank);
+          store.saveSettings();
+          closeSheet();
+          paintRankBar();
+          resetRankFeed();
+          load();
+        });
+      };
+      bind();
+    }
+    $('#rank-bar').addEventListener('click', (e) => {
+      const t = e.target.closest('[data-rtype]');
+      if (t) {
+        if (t.dataset.rtype === rank.type) return;
+        rank.type = t.dataset.rtype;
+        store.settings.tagRank = Object.assign({}, rank);
+        store.saveSettings();
+        paintRankBar();
+        resetRankFeed();
+        load();
+        return;
+      }
+      if (e.target.closest('#btn-rank-filter')) openRankFilter();
+    });
+    paintRankBar();
+    if (sort === 'hot') {
+      const subEl = document.querySelector('.tag-hero .sub');
+      if (subEl) subEl.textContent = '按热度浏览 · 可切榜单与筛选';
+    }
+
     const m = new Masonry($('#masonry'), colsFor());
     appendSkeletons(m, 6);
 
@@ -1354,13 +1454,23 @@
       loading = true;
       $('#loadmore').innerHTML = '<span class="spinner"></span>加载中';
       try {
-        const data = await api('/api/tag', { name, offset, sort });
+        const data = sort === 'hot'
+          ? await api('/api/tag-rank', {
+            tag: name, offset, type: rank.type,
+            range: rank.range, postTypes: rank.postTypes, recentDay: rank.recentDay,
+          })
+          : await api('/api/tag', { name, offset, sort });
         if (token !== navId) return;
         $('#masonry').querySelectorAll('.skeleton').forEach((s) => s.remove());
         if (!data.posts.length) {
           done = true;
           if (!offset && !shown) {
-            viewEl.innerHTML = `<div class="page-head"><div class="tag-hero"><div class="meta"><div class="n">#${esc(name)}</div></div></div></div>${emptyEl('这个话题下暂时没有公开内容', false)}`;
+            const grid = $('#masonry');
+            const msg = sort === 'hot' && rankFilterCount()
+              ? '这个条件下没有作品，试试放宽筛选'
+              : '这个话题下暂时没有公开内容';
+            if (grid) grid.innerHTML = emptyEl(msg, false);
+            $('#loadmore').innerHTML = '';
             return;
           }
         } else {

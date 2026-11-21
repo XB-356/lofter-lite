@@ -181,8 +181,29 @@ async function searchPosts(key, offset = 0) {
   return { list: offset === 0 ? posts : [], total: posts.length, next: 0, hasMore: false };
 }
 
+// 榜单：mock 里就是「热门」排序 + 按筛选条件裁一刀，够前端联调用
+async function tagRank(tag, { offset = 0, type = 'total', range = 0, postTypes = '', recentDay = 0 } = {}) {
+  const r = await tagPosts(tag, { offset, sort: 'hot' });
+  let posts = r.posts.slice();
+  if (String(postTypes) === '1') posts = posts.filter((p) => p.type !== 2);
+  if (String(postTypes) === '2') posts = posts.filter((p) => p.type === 2);
+  if (Number(recentDay) > 0) {
+    // mock 的作品时间是固定的历史日期，直接按天过滤会全空；
+    // 只在还有结果时才应用，保证界面联调时能看到「筛选后仍有内容」的样子
+    const since = Date.now() - Number(recentDay) * 86400e3;
+    const kept = posts.filter((p) => (p.time || 0) >= since);
+    if (kept.length) posts = kept;
+  }
+  const ranked = posts.map((p, i) => Object.assign({}, p, { hot: (p.hot || 0) + (posts.length - i) * 10 }));
+  return {
+    posts: ranked, nextOffset: r.nextOffset, hasMore: r.hasMore,
+    type, range: Number(range) || 0, postTypes, recentDay: Number(recentDay) || 0,
+  };
+}
+
 module.exports = {
   tagPosts,
+  tagRank,
   comments,
   postDetail,
   blogHome,
