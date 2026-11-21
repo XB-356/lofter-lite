@@ -144,7 +144,7 @@ test/                node:test：server(HTTP) / lofter(归一化) / cache / live
 - 标签里的 `tagList` 偶尔夹 `undefined`/空串，两份归一化都要 `map(String).filter(Boolean)`，否则列表里会出现 `#undefined`。
 - **话题页「热门」走 `POST https://api.lofter.com/newapi/tagPosts.json`**（`product=lofter-android-8.2.36`），表单 `{tag, offset, type, postTypes, recentDay, range, protectedFlag, postYm, …}`。实测语义（2026-11）：
   - `type` 只有 `total`（总榜）/ `month` / `week` / `date`（日榜）有效，**传 `year` 会被当成总榜返回**，所以 UI 不提供年榜；
-  - `postYm` 在任何 type 下都**完全无效**（换格式、换 product 都一样），所以「指定某个月看榜」这个能力上游没有；
+  - `postYm` **必须传 `YYYYMM`（无横杠，如 `202608`），而且只有 `type=total` 认它**：`total & postYm=202608` 能拿到整月（实测 10 条全在 2026-08-01..14、offset 也能翻页）；写 `2026-08` 会回 0 条，写 `20260801` 被忽略；配 `month/week/date/new` 一律被忽略。`postYmdSt/postYmdEt`（毫秒区间）全程无效。所以「按年月看榜」的实现是：选了年月就强制 `type=total` + `postYm=YYYYMM`（见 `lib/lofter.js` `tagRank()` 的 `ymCompact`），UI 上此时把 总/月/周/日 四个榜期 chip 收起、只留一个年月 chip；
   - `postTypes`：`1` 只回文字帖、`2` 只回图片帖，传 `1,2,3,4,5,6` 只会回 1 条 —— 默认用 `'1,2,4'`；
   - `recentDay`（0/1/7/30）与 `range`（0 不限、1 我关注的人、2 没看过的）都真实生效；
   - **响应是 `{msg, code, data:{list:[…]}}`，条目是 `postData.postView`**（不是 `response.items`），解析见 `lib/lofter.js` 的 `normalizeRankItem()`；`public/native-api.js` 里有一份等价的 `normRankItem()`，改字段要两边一起改。
