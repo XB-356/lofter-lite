@@ -86,8 +86,8 @@ npm run device -- shot       # 截屏到 dev-shots/
 ```bash
 npm run verify
 npm run apk                                     # 出正式包
-gh release create v1.0.0 android/build/lofter-lite.apk \
-  --title "LOFTER Lite 1.0.0" --notes "更新说明"
+gh release create v1.0.1 android/build/lofter-lite.apk \
+  --title "LOFTER Lite 1.0.1" --notes "更新说明"
 ```
 
 APK 不进仓库（`.gitignore` 已排除），只作为 Release 附件。

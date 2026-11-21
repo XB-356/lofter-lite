@@ -127,7 +127,7 @@
     `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[name] || ''}</svg>`;
 
   // 版本号只在这里改一处；APK 的 AndroidManifest.xml 与 package.json 也要同步
-  const APP_VERSION = '1.0.0';
+  const APP_VERSION = '1.0.1';
 
   // ================= 本地存储 =================
   const LS = 'lofter-lite:';
