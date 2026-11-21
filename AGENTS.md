@@ -54,7 +54,7 @@ test/                node:test：server(HTTP) / lofter(归一化) / cache / live
 - 服务端、`lib/`、`dev/`、`test/` 用 **CommonJS**；`scripts/*.mjs` 用 **ESM**。不要混。
 - 前端是 IIFE + 字符串模板，不加框架、不加依赖、不加构建步骤。
 - 新增一个接口要同步四处：`server.js` 的 switch、`public/app.js` 的 `api()` 调用、`dev/mock.js` 的假实现、`test/server.test.js` 的断言。
-- mock 层必须保持和 `lib/lofter.js` 相同的导出（`tagPosts` / `postDetail` / `blogHome` / `tagInfo` / `comments`），否则 `server.js` 的 `MOCK` 分支会挂。
+- mock 层必须保持和 `lib/lofter.js` 相同的导出（`tagPosts` / `tagRank` / `postDetail` / `blogHome` / `tagInfo` / `comments`），否则 `server.js` 的 `MOCK` 分支会挂。
 - mock 的帖子 id 必须按标签区分（`postId()`），否则发现流轮流取多个标签时会把同号帖当成重复，页面上只剩 9 张卡。
 - mock 与真实数据使用**不同缓存目录**（`data/cache-mock` / `data/cache`）。混用会让 mock 的假帖子被当成真实缓存返回。
 - 测试必须离线、随机端口、独立临时缓存目录（`test/helpers.js` 已封装），不要连线上游。
@@ -142,6 +142,14 @@ test/                node:test：server(HTTP) / lofter(归一化) / cache / live
 - 长按作品卡片只弹「不想看这条？」面板，卡片文字不可选中（`public/style.css` 的 `.card, .big-card { user-select: none }`）；评论少于 6 条时 `#cmt-compose-bottom` 会被隐藏。
 - 详情页「为什么被屏蔽」用 `blockCauses(p)`（返回 `{text, short}`），卡片里显示作者/标题/标签 + 「该作品已被【short】屏蔽」；合集上一篇/下一篇靠 `/api/collection` 最多翻 6 页找位置，找不到就把合集卡整个移除。
 - 标签里的 `tagList` 偶尔夹 `undefined`/空串，两份归一化都要 `map(String).filter(Boolean)`，否则列表里会出现 `#undefined`。
+- **话题页「热门」走 `POST https://api.lofter.com/newapi/tagPosts.json`**（`product=lofter-android-8.2.36`），表单 `{tag, offset, type, postTypes, recentDay, range, protectedFlag, postYm, …}`。实测语义（2026-11）：
+  - `type` 只有 `total`（总榜）/ `month` / `week` / `date`（日榜）有效，**传 `year` 会被当成总榜返回**，所以 UI 不提供年榜；
+  - `postYm` 在任何 type 下都**完全无效**（换格式、换 product 都一样），所以「指定某个月看榜」这个能力上游没有；
+  - `postTypes`：`1` 只回文字帖、`2` 只回图片帖，传 `1,2,3,4,5,6` 只会回 1 条 —— 默认用 `'1,2,4'`；
+  - `recentDay`（0/1/7/30）与 `range`（0 不限、1 我关注的人、2 没看过的）都真实生效；
+  - **响应是 `{msg, code, data:{list:[…]}}`，条目是 `postData.postView`**（不是 `response.items`），解析见 `lib/lofter.js` 的 `normalizeRankItem()`；`public/native-api.js` 里有一份等价的 `normRankItem()`，改字段要两边一起改。
+- **订阅合集**：`GET https://api.lofter.com/newapi/subscribeCollection/list.json?offset=0`（**必须登录态**，匿名回 `{"msg":"需要先登录哦～","code":401}`），`data.collections[]` 只有 `subscribeId/collectionId/blogId/coverUrl/name/unreadCount/latestPosts`，**没有作品数、作者名、上次更新时间**；要显示这些得对每个合集再 `POST /v1.1/postCollection.api`（`method=getCollectionDetail&blogid=&collectionid=&offset=0&order=1`）取 `response.collection`（含 `postCount/lastPublishTime/updateTime`）+ `response.blogInfo`。`getCollectionSimple` 对部分合集回 4101，别用。
+- **关注页的两个 tab**：`followTab = 'feed' | 'subscribe'`，订阅页内部还有 `followSubTab = 'tags' | 'collections'`；`renderSubscribe()` 渲染 `.sub-tabs` 后调 `renderTagGrid()` 或 `renderSubscribedCollections()`，其中 `renderTagGrid()` 的容器要写成 `$('#sub-body') || $('#follow-body')`，否则会把 sub-tabs 覆盖掉。
 
 - **卡片样式在用户主页 / 合集页可切**：`store.settings.cardMode = { blog: 'small'|'big', collection: … }`，`cardMode(kind)` / `cardModeBar(kind)` / `feedShell(kind)` / `addPostToFeed(m, post)` 四个函数一处管；小卡走 `.masonry` + `cardEl`，大卡走 `.big-list` + `bigCardEl`（容器 ID 固定 `#masonry` / `#big-list`，别在新视图里另起名字）。切换时 `saveSettings()` 后直接 `render()` 重进当前路由。
 - **搜索结果里的作品也必须是作品卡片**（不是行）：`mountPostCards(host, posts)` 里建一个 `.masonry.res-masonry` 再 `cardEl`，标签/用户仍是 `.res-row`。新增搜索类型时注意「全部」tab 是分段（标签/用户/作品），作品段要占位后挂载，不能直接塞 HTML 字符串。
